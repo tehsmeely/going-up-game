@@ -1,21 +1,24 @@
 #![allow(clippy::type_complexity)]
 
-mod actions;
 mod audio;
+mod game;
+mod input_action;
 mod loading;
 mod menu;
-mod player;
 
-use crate::actions::ActionsPlugin;
 use crate::audio::InternalAudioPlugin;
 use crate::loading::LoadingPlugin;
 use crate::menu::MenuPlugin;
-use crate::player::PlayerPlugin;
+use leafwing_input_manager::prelude::*;
 
+use crate::game::CoreGamePlugin;
+use crate::input_action::InputAction;
 use bevy::app::App;
 #[cfg(debug_assertions)]
 use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
 use bevy::prelude::*;
+use bevy_ecs_tilemap::TilemapPlugin;
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
 // This example game uses States to separate logic
 // See https://bevy-cheatbook.github.io/programming/states.html
@@ -38,14 +41,20 @@ impl Plugin for GamePlugin {
         app.add_state::<GameState>().add_plugins((
             LoadingPlugin,
             MenuPlugin,
-            ActionsPlugin,
+            CoreGamePlugin,
             InternalAudioPlugin,
-            PlayerPlugin,
         ));
-
-        #[cfg(debug_assertions)]
+        app.add_plugins((
+            InputManagerPlugin::<InputAction>::default(),
+            TilemapPlugin,
+            WorldInspectorPlugin::new(),
+        ));
+        #[cfg(feature = "frame-time-diagnostics")]
         {
             app.add_plugins((FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin::default()));
         }
     }
 }
+
+#[derive(Component, Debug, Default)]
+pub struct MainCamera;
