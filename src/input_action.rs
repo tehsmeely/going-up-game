@@ -5,4 +5,5 @@ use leafwing_input_manager::prelude::*;
 pub enum InputAction {
     Up,
     Down,
+    MouseMove,
 }

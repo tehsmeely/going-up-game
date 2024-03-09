@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use bevy_ecs_tilemap::prelude::*;
 use leafwing_input_manager::prelude::*;
 use rand::{thread_rng, Rng};
+use std::cmp::Ordering;
 
 pub struct GamePlugin;
 
@@ -18,9 +19,15 @@ impl Plugin for GamePlugin {
         )
         .add_systems(
             Update,
-            (move_lift_system, camera_track_system, lift_gizmo_system)
+            (
+                (lift_latch_system, move_lift_system).chain(),
+                camera_track_system,
+                lift_gizmo_system,
+                debug_lift_mode_text,
+            )
                 .run_if(in_state(GameState::Playing)),
         )
+        .register_type::<LiftMode>()
         .register_type::<LinearVelocity>();
     }
 }
@@ -42,6 +49,7 @@ fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>) {
     let mut input_map = InputMap::default();
     input_map.insert(KeyCode::W, InputAction::Up);
     input_map.insert(KeyCode::S, InputAction::Down);
+    input_map.insert(SingleAxis::mouse_motion_y(), InputAction::MouseMove);
     let texture = asset_server.load("textures/lift.png");
     commands
         .spawn(SpriteBundle {
@@ -51,16 +59,24 @@ fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>) {
         })
         .insert(Name::new("Lift"))
         .insert(Lift)
+        .insert(LiftMode::Free)
         .insert(LinearVelocity {
             max_y: Some((-100.0, 100.0)),
             ..default()
         })
-        .insert(Acceleration(100.0))
+        .insert(Acceleration(200.0))
         .insert(CameraTrack { y_threshold: 50.0 })
         .insert(InputManagerBundle::<InputAction> {
             input_map,
             ..Default::default()
         });
+
+    commands
+        .spawn(Text2dBundle {
+            text: Text::from_section("", TextStyle::default()),
+            ..default()
+        })
+        .insert(LiftModeDebugText);
 }
 
 fn build_floor_map(
@@ -147,6 +163,40 @@ fn build_floor_map(
     commands.insert_resource(lift_limits);
 }
 
+fn lift_latch_system(
+    mut lift_query: Query<(&Transform, &mut LinearVelocity), With<Lift>>,
+    latch_y_positions: Res<FloorLatchYPositions>,
+    mut gizmos: Gizmos,
+) {
+    let velocity_threshold = 20.0;
+    let max_latch_distance = 30.0;
+    let latch_multiplier = 0.25;
+    let (transform, mut velocity) = lift_query.single_mut();
+    if velocity.y.abs() < velocity_threshold {
+        let min_distance_to_latch: Option<f32> = latch_y_positions
+            .0
+            .iter()
+            .map(|y| y - transform.translation.y)
+            .min_by(|v1, v2| v1.abs().partial_cmp(&v2.abs()).unwrap_or(Ordering::Equal));
+        if let Some(latch_diff) = min_distance_to_latch {
+            if latch_diff < max_latch_distance {
+                gizmos.line_2d(
+                    transform.translation.truncate(),
+                    Vec2::new(
+                        transform.translation.x,
+                        transform.translation.y + latch_diff,
+                    ),
+                    Color::GREEN,
+                );
+                let effect_amplitute = (max_latch_distance - latch_diff.abs());
+                let target_y = effect_amplitute * latch_diff.signum() * latch_multiplier;
+                let target_x = velocity.x;
+                velocity.lerp(target_x, target_y, 0.3);
+            }
+        }
+    }
+}
+
 fn move_lift_system(
     inputs: Query<&ActionState<InputAction>>,
     mut lift_query: Query<(&mut Transform, &mut LinearVelocity, &Acceleration), With<Lift>>,
@@ -199,6 +249,43 @@ fn lift_gizmo_system(
 #[derive(Component, Debug, Reflect)]
 struct Lift;
 
+#[derive(Component, Debug, Reflect)]
+enum LiftMode {
+    Free,
+    Opening,
+    Open,
+    Closing,
+}
+
+impl LiftMode {
+    fn as_str(&self) -> &str {
+        match self {
+            Self::Free => "free",
+            Self::Opening => "opening",
+            Self::Open => "open",
+            Self::Closing => "closing",
+        }
+    }
+}
+
+#[derive(Component, Debug, Reflect)]
+struct LiftModeDebugText;
+
+// TODO: Consider splitting in two for transform and text content changes
+fn debug_lift_mode_text(
+    lift_query: Query<(&GlobalTransform, &LiftMode), With<Lift>>,
+    mut text_query: Query<(&mut Transform, &mut Text), (Without<Lift>, With<LiftModeDebugText>)>,
+) {
+    for (lift_transform, lift_mode) in lift_query.iter() {
+        for (mut text_transform, mut text) in text_query.iter_mut() {
+            text_transform.translation = lift_transform.translation();
+            text_transform.translation.y += 10.0;
+            text_transform.translation.z = LIFT_Z + 1.0;
+            text.sections[0].value = lift_mode.as_str().to_string();
+        }
+    }
+}
+
 #[derive(Component, Debug, Default, Reflect)]
 struct LinearVelocity {
     x: f32,
@@ -215,7 +302,19 @@ impl LinearVelocity {
         };
         self.y = match self.max_y {
             Some((min, max)) => (self.y + y).clamp(min, max),
-            None => self.y + x,
+            None => self.y + y,
+        };
+    }
+
+    fn lerp(&mut self, x: f32, y: f32, s: f32) {
+        let Vec2 { x, y } = Vec2::new(self.x, self.y).lerp(Vec2::new(x, y), s);
+        self.x = match self.max_x {
+            Some((min, max)) => (x).clamp(min, max),
+            None => x,
+        };
+        self.y = match self.max_y {
+            Some((min, max)) => (y).clamp(min, max),
+            None => y,
         };
     }
 }
