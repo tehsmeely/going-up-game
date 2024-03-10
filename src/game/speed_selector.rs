@@ -71,7 +71,9 @@ fn handle_selector_input(
     let inputs = inputs.single();
     let mouse = inputs.value(InputAction::MouseMove);
 
-    if mouse != 0.0 {
+    let mouse_button_held = inputs.value(InputAction::MouseLClick) != 0.0;
+
+    if mouse != 0.0 && mouse_button_held {
         let angle_change = mouse * MOUSE_MOVE_ROTATION_FACTOR;
         for mut rotation in handle_query.iter_mut() {
             let target = rotation.target + angle_change;
@@ -115,4 +117,4 @@ impl Default for Rotation {
 }
 
 #[derive(Clone, Debug, Deref, DerefMut, Resource)]
-pub struct TargetVelocity(f32);
+pub struct TargetVelocity(pub f32);

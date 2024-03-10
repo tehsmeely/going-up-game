@@ -3,6 +3,7 @@
 mod audio;
 mod game;
 mod helpers;
+mod history_store;
 mod input_action;
 mod loading;
 mod menu;

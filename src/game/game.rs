@@ -1,8 +1,11 @@
+use crate::game::speed_selector::TargetVelocity;
 use crate::input_action::InputAction;
 use crate::{GameState, MainCamera};
 use bevy::prelude::*;
 use bevy_ecs_tilemap::prelude::*;
+use bevy_inspector_egui::inspector_options::Target;
 use leafwing_input_manager::prelude::*;
+use leafwing_input_manager::user_input::InputKind::Mouse;
 use rand::{thread_rng, Rng};
 use std::cmp::Ordering;
 
@@ -50,6 +53,7 @@ fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>) {
     input_map.insert(KeyCode::W, InputAction::Up);
     input_map.insert(KeyCode::S, InputAction::Down);
     input_map.insert(SingleAxis::mouse_motion_y(), InputAction::MouseMove);
+    input_map.insert(Mouse(MouseButton::Left), InputAction::MouseLClick);
     let texture = asset_server.load("textures/lift.png");
     commands
         .spawn(SpriteBundle {
@@ -168,6 +172,10 @@ fn lift_latch_system(
     latch_y_positions: Res<FloorLatchYPositions>,
     mut gizmos: Gizmos,
 ) {
+    let enabled = false;
+    if !enabled {
+        return;
+    }
     let velocity_threshold = 20.0;
     let max_latch_distance = 30.0;
     let latch_multiplier = 0.25;
@@ -198,27 +206,16 @@ fn lift_latch_system(
 }
 
 fn move_lift_system(
-    inputs: Query<&ActionState<InputAction>>,
-    mut lift_query: Query<(&mut Transform, &mut LinearVelocity, &Acceleration), With<Lift>>,
+    mut lift_query: Query<(&mut Transform), With<Lift>>,
     time: Res<Time>,
     shaft_centre_x: Res<ShaftCentreX>,
     lift_limits: Res<LiftLimits>,
+    target_velocity: Res<TargetVelocity>,
 ) {
-    let inputs = inputs.single();
-    let (mut lift_transform, mut lift_velocity, acceleration) = lift_query.single_mut();
-    let velocity_change = if inputs.pressed(InputAction::Up) {
-        time.delta_seconds() * acceleration.0
-    } else if inputs.pressed(InputAction::Down) {
-        time.delta_seconds() * acceleration.0 * -1.0
-    } else {
-        0.0
-    };
+    let mut lift_transform = lift_query.single_mut();
 
-    lift_velocity.add(0.0, velocity_change);
-
-    // TODO: Reset velocity if we hit a limit
     lift_transform.translation.y = f32::clamp(
-        lift_transform.translation.y + (lift_velocity.y * time.delta_seconds()),
+        lift_transform.translation.y + (target_velocity.0 * time.delta_seconds()),
         lift_limits.min,
         lift_limits.max,
     );

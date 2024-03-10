@@ -6,4 +6,5 @@ pub enum InputAction {
     Up,
     Down,
     MouseMove,
+    MouseLClick,
 }
