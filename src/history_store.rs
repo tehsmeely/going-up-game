@@ -1,5 +1,6 @@
 use std::fmt::{Debug, Display};
 
+#[derive(Debug, Clone)]
 struct SimpleRingbuf<V> {
     data: Vec<V>,
     start: usize,
@@ -10,14 +11,13 @@ struct SimpleRingbuf<V> {
 
 impl<T> SimpleRingbuf<T>
 where
-    T: Default + Display + Debug,
+    T: Default + Debug,
 {
     fn new(size: usize) -> SimpleRingbuf<T> {
         let mut data = Vec::with_capacity(size);
         for _i in 0..size {
             data.push(Default::default());
         }
-        println!("data: {:?}", data);
         SimpleRingbuf {
             data,
             start: 0,
@@ -56,7 +56,7 @@ where
 
 impl<T> SimpleRingbuf<T>
 where
-    T: Clone + Default + Display + Debug,
+    T: Clone + Default + Debug,
 {
     /// Same as [push] but emits the replaced T if it was so
     fn push_emit(&mut self, value: T) -> Option<T> {
@@ -99,14 +99,19 @@ impl<'a, T> Iterator for SimpleRingbufIter<'a, T> {
     }
 }
 
-struct HistoryStore<T> {
+#[derive(Debug, Clone)]
+pub struct HistoryStore<T> {
     primary_ringbuf: SimpleRingbuf<T>,
     storage_ringbuf: SimpleRingbuf<T>,
     persistence_method: PersistenceMethod,
 }
 
-impl<T: Default + Display + Debug + Clone> HistoryStore<T> {
-    fn new(primary_size: usize, storage_size: usize, store_every_nth: usize) -> HistoryStore<T> {
+impl<T: Default + Debug + Clone> HistoryStore<T> {
+    pub fn new(
+        primary_size: usize,
+        storage_size: usize,
+        store_every_nth: usize,
+    ) -> HistoryStore<T> {
         Self {
             primary_ringbuf: SimpleRingbuf::new(primary_size),
             storage_ringbuf: SimpleRingbuf::new(storage_size),
@@ -114,7 +119,7 @@ impl<T: Default + Display + Debug + Clone> HistoryStore<T> {
         }
     }
 
-    fn push(&mut self, value: T) {
+    pub fn push(&mut self, value: T) {
         match self.primary_ringbuf.push_emit(value) {
             Some(replaced) => {
                 if self.persistence_method.persist_next() {
@@ -126,7 +131,17 @@ impl<T: Default + Display + Debug + Clone> HistoryStore<T> {
     }
 }
 
-enum PersistenceMethod {
+impl<'a, T> HistoryStore<T>
+where
+    T: Default + Debug,
+{
+    pub fn iter_primary(&'a self) -> impl Iterator<Item = &T> + 'a {
+        self.primary_ringbuf.iter()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum PersistenceMethod {
     KeepEvery(KeepEveryMethod),
 }
 
@@ -138,13 +153,14 @@ impl PersistenceMethod {
     }
 }
 
-struct KeepEveryMethod {
+#[derive(Debug, Clone)]
+pub struct KeepEveryMethod {
     nth: usize,
     count: usize,
 }
 
 impl KeepEveryMethod {
-    fn new(nth: usize) -> KeepEveryMethod {
+    pub fn new(nth: usize) -> KeepEveryMethod {
         KeepEveryMethod { nth, count: 0 }
     }
 

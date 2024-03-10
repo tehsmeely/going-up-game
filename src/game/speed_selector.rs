@@ -13,7 +13,7 @@ const MOUSE_MOVE_ROTATION_FACTOR: f32 = 0.005;
 
 // TODO: Consider this factor being configurable and maybe non-linear?
 /// Factor by which target velocity is determined by multiplying with rotation of handle
-const TARGET_VELOCITY_FACTOR: f32 = 10.0;
+const TARGET_VELOCITY_FACTOR: f32 = -50.0;
 
 pub struct SpeedSelectorPlugin;
 

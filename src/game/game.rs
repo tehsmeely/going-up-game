@@ -1,4 +1,5 @@
 use crate::game::speed_selector::TargetVelocity;
+use crate::history_store::HistoryStore;
 use crate::input_action::InputAction;
 use crate::{GameState, MainCamera};
 use bevy::prelude::*;
@@ -8,6 +9,7 @@ use leafwing_input_manager::prelude::*;
 use leafwing_input_manager::user_input::InputKind::Mouse;
 use rand::{thread_rng, Rng};
 use std::cmp::Ordering;
+use std::time::Duration;
 
 pub struct GamePlugin;
 
@@ -30,10 +32,17 @@ impl Plugin for GamePlugin {
             )
                 .run_if(in_state(GameState::Playing)),
         )
+        .insert_resource(VelocityLog(HistoryStore::new(512, 1024, 60)))
+        .insert_resource(AccelerationLog(HistoryStore::new(512, 1024, 60)))
         .register_type::<LiftMode>()
         .register_type::<LinearVelocity>();
     }
 }
+
+#[derive(Resource, Debug)]
+pub struct VelocityLog(pub HistoryStore<(f32, f32)>);
+#[derive(Resource, Debug)]
+pub struct AccelerationLog(pub HistoryStore<(f32, f32)>);
 
 #[derive(Resource, Debug, Default, Reflect)]
 struct ShaftCentreX(f32);
@@ -64,11 +73,7 @@ fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>) {
         .insert(Name::new("Lift"))
         .insert(Lift)
         .insert(LiftMode::Free)
-        .insert(LinearVelocity {
-            max_y: Some((-100.0, 100.0)),
-            ..default()
-        })
-        .insert(Acceleration(200.0))
+        .insert(LinearVelocity::new((-100.0, 100.0), 100.0))
         .insert(CameraTrack { y_threshold: 50.0 })
         .insert(InputManagerBundle::<InputAction> {
             input_map,
@@ -172,54 +177,34 @@ fn lift_latch_system(
     latch_y_positions: Res<FloorLatchYPositions>,
     mut gizmos: Gizmos,
 ) {
-    let enabled = false;
-    if !enabled {
-        return;
-    }
-    let velocity_threshold = 20.0;
-    let max_latch_distance = 30.0;
-    let latch_multiplier = 0.25;
-    let (transform, mut velocity) = lift_query.single_mut();
-    if velocity.y.abs() < velocity_threshold {
-        let min_distance_to_latch: Option<f32> = latch_y_positions
-            .0
-            .iter()
-            .map(|y| y - transform.translation.y)
-            .min_by(|v1, v2| v1.abs().partial_cmp(&v2.abs()).unwrap_or(Ordering::Equal));
-        if let Some(latch_diff) = min_distance_to_latch {
-            if latch_diff < max_latch_distance {
-                gizmos.line_2d(
-                    transform.translation.truncate(),
-                    Vec2::new(
-                        transform.translation.x,
-                        transform.translation.y + latch_diff,
-                    ),
-                    Color::GREEN,
-                );
-                let effect_amplitute = (max_latch_distance - latch_diff.abs());
-                let target_y = effect_amplitute * latch_diff.signum() * latch_multiplier;
-                let target_x = velocity.x;
-                velocity.lerp(target_x, target_y, 0.3);
-            }
-        }
-    }
+    // TODO: Implement me!
 }
 
 fn move_lift_system(
-    mut lift_query: Query<(&mut Transform), With<Lift>>,
+    mut lift_query: Query<(&mut Transform, &mut LinearVelocity), With<Lift>>,
     time: Res<Time>,
     shaft_centre_x: Res<ShaftCentreX>,
     lift_limits: Res<LiftLimits>,
     target_velocity: Res<TargetVelocity>,
+    mut velocity_log: ResMut<VelocityLog>,
+    mut acceleration_log: ResMut<AccelerationLog>,
 ) {
-    let mut lift_transform = lift_query.single_mut();
+    let (mut lift_transform, mut actual_velocity) = lift_query.single_mut();
+
+    let accel_this_tick = actual_velocity.update(target_velocity.0, time.delta());
 
     lift_transform.translation.y = f32::clamp(
-        lift_transform.translation.y + (target_velocity.0 * time.delta_seconds()),
+        lift_transform.translation.y + (actual_velocity.velocity * time.delta_seconds()),
         lift_limits.min,
         lift_limits.max,
     );
     lift_transform.translation.x = shaft_centre_x.0;
+    velocity_log
+        .0
+        .push((time.elapsed_seconds(), actual_velocity.velocity));
+    acceleration_log
+        .0
+        .push((time.elapsed_seconds(), accel_this_tick));
 }
 
 fn lift_gizmo_system(
@@ -285,39 +270,36 @@ fn debug_lift_mode_text(
 
 #[derive(Component, Debug, Default, Reflect)]
 struct LinearVelocity {
-    x: f32,
-    y: f32,
-    max_x: Option<(f32, f32)>,
-    max_y: Option<(f32, f32)>,
+    velocity: f32,
+    bounds: (f32, f32),
+    max_accel: f32,
 }
 
 impl LinearVelocity {
-    fn add(&mut self, x: f32, y: f32) {
-        self.x = match self.max_x {
-            Some((min, max)) => (self.x + x).clamp(min, max),
-            None => self.x + x,
-        };
-        self.y = match self.max_y {
-            Some((min, max)) => (self.y + y).clamp(min, max),
-            None => self.y + y,
-        };
+    fn new(bounds: (f32, f32), max_accel: f32) -> Self {
+        Self {
+            bounds,
+            max_accel,
+            velocity: 0.0,
+        }
     }
-
-    fn lerp(&mut self, x: f32, y: f32, s: f32) {
-        let Vec2 { x, y } = Vec2::new(self.x, self.y).lerp(Vec2::new(x, y), s);
-        self.x = match self.max_x {
-            Some((min, max)) => (x).clamp(min, max),
-            None => x,
-        };
-        self.y = match self.max_y {
-            Some((min, max)) => (y).clamp(min, max),
-            None => y,
-        };
+    /// Update self to match target_x, with a maximum change of max_accel
+    /// Emits the true acceleration applied
+    fn update(&mut self, target_x: f32, delta: Duration) -> f32 {
+        // v = u + at
+        // solve for a
+        // a = (v - u) / t
+        // if a is above max_accel, use max_accel instead and resolve
+        let target_accel = (target_x - self.velocity) / delta.as_secs_f32();
+        if target_accel.abs() > self.max_accel {
+            self.velocity += self.max_accel * target_accel.signum() * delta.as_secs_f32();
+            self.max_accel * target_accel.signum()
+        } else {
+            self.velocity = target_x;
+            target_accel
+        }
     }
 }
-
-#[derive(Component, Debug, Default, Deref, DerefMut)]
-struct Acceleration(f32);
 
 #[derive(Component, Debug, Default)]
 struct CameraTrack {

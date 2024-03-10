@@ -674,6 +674,7 @@ dependencies = [
  "bevy_ecs_tilemap",
  "bevy_egui",
  "bevy_kira_audio",
+ "egui_plot",
  "embed-resource",
  "image",
  "leafwing-input-manager",
@@ -1670,6 +1671,15 @@ dependencies = [
  "ahash",
  "epaint",
  "nohash-hasher",
+]
+
+[[package]]
+name = "egui_plot"
+version = "0.24.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29b484821a5b336af40a34151a940f52bef0f1ab56ec0d8cf80f74783eaae412"
+dependencies = [
+ "egui",
 ]
 
 [[package]]

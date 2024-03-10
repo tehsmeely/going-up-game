@@ -9,6 +9,10 @@ pub struct CoreGamePlugin;
 
 impl Plugin for CoreGamePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((game::GamePlugin, speed_selector::SpeedSelectorPlugin));
+        app.add_plugins((
+            game::GamePlugin,
+            speed_selector::SpeedSelectorPlugin,
+            ui::GameUiPlugin,
+        ));
     }
 }
