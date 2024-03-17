@@ -71,7 +71,7 @@ where
     }
 
     fn flatten_copy(&self) -> Vec<T> {
-        self.iter().map(|v| v.clone()).collect()
+        self.iter().cloned().collect()
     }
 }
 
@@ -120,13 +120,10 @@ impl<T: Default + Debug + Clone> HistoryStore<T> {
     }
 
     pub fn push(&mut self, value: T) {
-        match self.primary_ringbuf.push_emit(value) {
-            Some(replaced) => {
-                if self.persistence_method.persist_next() {
-                    self.storage_ringbuf.push(replaced);
-                }
+        if let Some(replaced) = self.primary_ringbuf.push_emit(value) {
+            if self.persistence_method.persist_next() {
+                self.storage_ringbuf.push(replaced);
             }
-            None => {}
         }
     }
 }

@@ -1,6 +1,8 @@
 #![allow(clippy::type_complexity)]
 
 mod audio;
+mod camera;
+mod core;
 mod game;
 mod helpers;
 mod history_store;
@@ -13,6 +15,7 @@ use crate::loading::LoadingPlugin;
 use crate::menu::MenuPlugin;
 use leafwing_input_manager::prelude::*;
 
+use crate::camera::CameraPlugin;
 use crate::game::CoreGamePlugin;
 use crate::input_action::InputAction;
 use bevy::app::App;
@@ -45,6 +48,8 @@ impl Plugin for GamePlugin {
             MenuPlugin,
             CoreGamePlugin,
             InternalAudioPlugin,
+            CameraPlugin,
+            core::CorePlugin,
         ));
         app.add_plugins((
             InputManagerPlugin::<InputAction>::default(),
@@ -57,6 +62,3 @@ impl Plugin for GamePlugin {
         }
     }
 }
-
-#[derive(Component, Debug, Default)]
-pub struct MainCamera;

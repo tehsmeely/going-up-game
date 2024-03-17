@@ -1,6 +1,5 @@
 use crate::loading::TextureAssets;
 use crate::GameState;
-use crate::MainCamera;
 use bevy::prelude::*;
 
 pub struct MenuPlugin;
@@ -35,7 +34,6 @@ struct Menu;
 
 fn setup_menu(mut commands: Commands, textures: Res<TextureAssets>) {
     info!("menu");
-    commands.spawn(Camera2dBundle::default()).insert(MainCamera);
     commands
         .spawn((
             NodeBundle {

@@ -1,41 +1,67 @@
+use crate::camera::{CameraTrack, RENDER_LAYER_MAIN};
+use crate::game::floors;
+use crate::game::floors::{
+    spawn_person_system, FloorLatchYPositions, FloorRegular, FloorShaft, FloorVestibule, Floors,
+    LiftLimits, PersonSpawnTimer, ShaftCentreX,
+};
 use crate::game::speed_selector::TargetVelocity;
+use crate::game::world_gen::Floor;
 use crate::history_store::HistoryStore;
 use crate::input_action::InputAction;
-use crate::{GameState, MainCamera};
+use crate::{camera, GameState};
+use bevy::ecs::system::EntityCommands;
 use bevy::prelude::*;
+use bevy::render::view::RenderLayers;
 use bevy_ecs_tilemap::prelude::*;
 use bevy_inspector_egui::inspector_options::Target;
+use derive_new::new;
 use leafwing_input_manager::prelude::*;
 use leafwing_input_manager::user_input::InputKind::Mouse;
 use rand::{thread_rng, Rng};
 use std::cmp::Ordering;
+use std::f32::consts::TAU;
 use std::time::Duration;
 
 pub struct GamePlugin;
 
-const MAP_Z: f32 = 0.0;
-const LIFT_Z: f32 = 10.0;
+pub const MAP_Z: f32 = 0.0;
+const LIFT_Z: f32 = 210.0;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             OnEnter(GameState::Playing),
-            (build_floor_map, setup_game, setup_camera).chain(),
+            (floors::build_floor_map, setup_game).chain(),
         )
         .add_systems(
             Update,
             (
-                (lift_latch_system, move_lift_system).chain(),
-                camera_track_system,
+                camera::camera_track_system,
                 lift_gizmo_system,
                 debug_lift_mode_text,
+                floor_proximity_system,
+                proximity_timer_display_system,
+                spawn_person_system,
             )
                 .run_if(in_state(GameState::Playing)),
         )
+        .add_systems(
+            FixedUpdate,
+            ((lift_latch_system, move_lift_system).chain(),).run_if(in_state(GameState::Playing)),
+        )
         .insert_resource(VelocityLog(HistoryStore::new(512, 1024, 60)))
         .insert_resource(AccelerationLog(HistoryStore::new(512, 1024, 60)))
+        .insert_resource(PersonSpawnTimer(Timer::from_seconds(
+            5.0,
+            TimerMode::Repeating,
+        )))
         .register_type::<LiftMode>()
-        .register_type::<LinearVelocity>();
+        .register_type::<LinearVelocity>()
+        .register_type::<FloorProximity>()
+        .register_type::<FloorProximitySensor>()
+        .register_type::<FloorShaft>()
+        .register_type::<FloorVestibule>()
+        .register_type::<FloorRegular>();
     }
 }
 
@@ -43,18 +69,6 @@ impl Plugin for GamePlugin {
 pub struct VelocityLog(pub HistoryStore<(f32, f32)>);
 #[derive(Resource, Debug)]
 pub struct AccelerationLog(pub HistoryStore<(f32, f32)>);
-
-#[derive(Resource, Debug, Default, Reflect)]
-struct ShaftCentreX(f32);
-
-#[derive(Resource, Debug, Default, Reflect)]
-struct LiftLimits {
-    min: f32,
-    max: f32,
-}
-
-#[derive(Resource, Debug, Default, Reflect)]
-struct FloorLatchYPositions(Vec<f32>);
 
 fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>) {
     println!("Setting up game");
@@ -78,6 +92,12 @@ fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>) {
         .insert(InputManagerBundle::<InputAction> {
             input_map,
             ..Default::default()
+        })
+        .insert(RenderLayers::layer(RENDER_LAYER_MAIN))
+        .insert(FloorProximitySensor {
+            abs_distance_threshold: 10.0,
+            max_velocity: 2.5,
+            floor_timer_duration: Duration::from_secs(2),
         });
 
     commands
@@ -86,90 +106,6 @@ fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..default()
         })
         .insert(LiftModeDebugText);
-}
-
-fn build_floor_map(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    array_texture_loader: Res<ArrayTextureLoader>,
-) {
-    println!("Building floor map");
-    let texture: Handle<Image> = asset_server.load("textures/floor_tile.png");
-    let tilemap_entity = commands.spawn_empty().id();
-    let shaft_x = 10;
-    let map_size = TilemapSize {
-        x: shaft_x + 1,
-        y: 10,
-    };
-    let mut tile_storage = TileStorage::empty(map_size);
-
-    let tile_size = TilemapTileSize { x: 60.0, y: 60.0 };
-    let grid_size = tile_size.into();
-    let map_type = TilemapType::default();
-
-    let mut rng = thread_rng();
-
-    // Intially populated with raw positions, then will be mapped with the tilemap transform after
-    let mut floor_latch_y_positions = Vec::new();
-
-    for x in 0..map_size.x {
-        for y in 0..map_size.y {
-            let tile_pos = TilePos::new(x, y);
-            let texture_index = {
-                let texture_index = if x == shaft_x {
-                    3
-                } else if x == (shaft_x - 1) {
-                    2
-                } else {
-                    rng.gen_range(0..2)
-                };
-                TileTextureIndex(texture_index)
-            };
-            let tile_entity = commands
-                .spawn(TileBundle {
-                    position: tile_pos,
-                    tilemap_id: TilemapId(tilemap_entity),
-                    texture_index,
-                    ..default()
-                })
-                .id();
-            floor_latch_y_positions.push(y as f32 * tile_size.y);
-            tile_storage.set(&tile_pos, tile_entity);
-        }
-    }
-
-    let tilemap_transform = get_tilemap_center_transform(&map_size, &grid_size, &map_type, MAP_Z);
-
-    commands.entity(tilemap_entity).insert(TilemapBundle {
-        grid_size,
-        map_type,
-        size: map_size,
-        storage: tile_storage,
-        texture: TilemapTexture::Single(texture.clone()),
-        tile_size,
-        transform: tilemap_transform,
-        ..Default::default()
-    });
-    array_texture_loader.add(TilemapArrayTexture {
-        texture: TilemapTexture::Single(texture),
-        tile_size,
-        ..Default::default()
-    });
-
-    let floor_latch_y_positions: Vec<f32> = floor_latch_y_positions
-        .iter()
-        .map(|y| y + tilemap_transform.translation.y)
-        .collect();
-    commands.insert_resource(FloorLatchYPositions(floor_latch_y_positions));
-
-    let shaft_centre_x = (shaft_x as f32 * tile_size.x) + tilemap_transform.translation.x;
-    commands.insert_resource(ShaftCentreX(shaft_centre_x));
-
-    let lift_limits = LiftLimits {
-        min: tilemap_transform.translation.y,
-        max: tilemap_transform.translation.y + ((map_size.y - 1) as f32 * tile_size.y),
-    };
-    commands.insert_resource(lift_limits);
 }
 
 fn lift_latch_system(
@@ -229,7 +165,7 @@ fn lift_gizmo_system(
 
 /// Marker component for the lift
 #[derive(Component, Debug, Reflect)]
-struct Lift;
+pub struct Lift;
 
 #[derive(Component, Debug, Reflect)]
 enum LiftMode {
@@ -269,8 +205,8 @@ fn debug_lift_mode_text(
 }
 
 #[derive(Component, Debug, Default, Reflect)]
-struct LinearVelocity {
-    velocity: f32,
+pub struct LinearVelocity {
+    pub velocity: f32,
     bounds: (f32, f32),
     max_accel: f32,
 }
@@ -301,32 +237,72 @@ impl LinearVelocity {
     }
 }
 
-#[derive(Component, Debug, Default)]
-struct CameraTrack {
-    y_threshold: f32,
+#[derive(Clone, Debug, Reflect, Component, new)]
+struct FloorProximity {
+    floor_num: i32,
+    time_in_proximity: Timer,
+}
+#[derive(Clone, Debug, Reflect, Component, new)]
+struct FloorProximitySensor {
+    abs_distance_threshold: f32,
+    max_velocity: f32,
+    floor_timer_duration: Duration,
 }
 
-pub fn camera_track_system(
-    mut camera_query: Query<(&mut Transform), (With<Camera>, With<MainCamera>)>,
-    tracked_query: Query<(&Transform, &CameraTrack), Without<Camera>>,
+fn floor_proximity_system(
+    mut commands: Commands,
+    mut lift_query: Query<(
+        Entity,
+        &Transform,
+        &LinearVelocity,
+        &FloorProximitySensor,
+        Option<&mut FloorProximity>,
+    )>,
+    floors: Res<Floors>,
+    time: Res<Time>,
 ) {
-    for (transform, camera_track) in tracked_query.iter() {
-        for (mut camera_transform) in camera_query.iter_mut() {
-            let y = f32::clamp(
-                camera_transform.translation.y,
-                transform.translation.y - camera_track.y_threshold,
-                transform.translation.y + camera_track.y_threshold,
-            );
-            camera_transform.translation.y = y;
-            camera_transform.translation.x = transform.translation.x - 200.0;
+    for (entity, lift_transform, velocity, sensor, mut proximity) in lift_query.iter_mut() {
+        if let Some((closest_floor, closest_floor_y)) =
+            floors.closest_floor(lift_transform.translation.y)
+        {
+            let close_enough = (lift_transform.translation.y - closest_floor_y).abs()
+                < sensor.abs_distance_threshold;
+            let slow_enough = velocity.velocity.abs() < sensor.max_velocity;
+
+            // If all matches up, tick the timer, otherwise reset
+            if let Some(mut floor_proximity) = proximity {
+                let same_floor = floor_proximity.floor_num == closest_floor;
+                if same_floor && close_enough && slow_enough {
+                    floor_proximity.time_in_proximity.tick(time.delta());
+                } else {
+                    floor_proximity.floor_num = closest_floor;
+                    floor_proximity.time_in_proximity.reset();
+                }
+            } else {
+                commands.entity(entity).insert(FloorProximity::new(
+                    closest_floor,
+                    Timer::new(sensor.floor_timer_duration, TimerMode::Once),
+                ));
+            }
         }
     }
 }
 
-pub fn setup_camera(
-    mut camera_query: Query<(&mut OrthographicProjection), (With<Camera>, With<MainCamera>)>,
+fn proximity_timer_display_system(
+    query: Query<(Option<&FloorProximity>, &FloorProximitySensor, &Transform)>,
+    mut gizmos: Gizmos,
 ) {
-    for (mut camera) in camera_query.iter_mut() {
-        camera.scale = 0.5;
+    for (proximity, sensor, transform) in query.iter() {
+        if let Some(proximity) = proximity {
+            let fill_pct = proximity.time_in_proximity.elapsed().as_secs_f32()
+                / sensor.floor_timer_duration.as_secs_f32();
+            gizmos.arc_2d(
+                transform.translation.truncate(),
+                0.0,
+                TAU * fill_pct,
+                15.0,
+                Color::BLUE,
+            );
+        }
     }
 }

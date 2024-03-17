@@ -1,6 +1,8 @@
 use bevy::app::{App, Plugin};
 
+mod floors;
 mod game;
+mod overlay;
 mod speed_selector;
 mod ui;
 mod world_gen;
@@ -13,6 +15,7 @@ impl Plugin for CoreGamePlugin {
             game::GamePlugin,
             speed_selector::SpeedSelectorPlugin,
             ui::GameUiPlugin,
+            overlay::OverlayPlugin,
         ));
     }
 }

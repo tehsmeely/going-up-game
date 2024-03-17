@@ -1,5 +1,8 @@
+use crate::core::{InScreenSpaceLocation, ScreenSpaceAnchor, With2DScale};
 use crate::{GameState, InputAction};
+use bevy::asset::AssetLoader;
 use bevy::prelude::*;
+use bevy::render::view::RenderLayers;
 use leafwing_input_manager::action_state::ActionState;
 use std::thread::spawn;
 
@@ -15,6 +18,8 @@ const MOUSE_MOVE_ROTATION_FACTOR: f32 = 0.005;
 /// Factor by which target velocity is determined by multiplying with rotation of handle
 const TARGET_VELOCITY_FACTOR: f32 = -50.0;
 
+const SCALE: f32 = 2.0;
+
 pub struct SpeedSelectorPlugin;
 
 impl Plugin for SpeedSelectorPlugin {
@@ -29,7 +34,24 @@ impl Plugin for SpeedSelectorPlugin {
     }
 }
 
+/*
+fn position_selector(
+    mut dial_query: Query<(&mut Transform), (With<SpeedDial>, Without<SpeedHandle>)>,
+    windows: Query<&Window>,
+) {
+    if let Ok(window) = windows.get_single() {
+        let offset = 80.0;
+        let x = (window.width() / 2.0) - offset;
+        for (mut transform) in dial_query.iter_mut() {
+            transform.translation = Vec3::new(x, 0.0, DIAL_Z);
+        }
+    }
+}
+
+ */
+
 fn spawn_selector(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let render_layers = RenderLayers::layer(crate::camera::RENDER_LAYER_OVERLAY);
     let dial_handle = asset_server.load("textures/speed-dial.png");
     let handle_handle = asset_server.load("textures/speed-handle.png");
     commands
@@ -40,6 +62,9 @@ fn spawn_selector(mut commands: Commands, asset_server: Res<AssetServer>) {
         })
         .insert(Name::from("Speed Dial"))
         .insert(SpeedDial)
+        .insert(render_layers.clone())
+        .insert(With2DScale::new(2.0))
+        .insert(InScreenSpaceLocation::new(ScreenSpaceAnchor::Right, 80.0))
         .with_children(|parent| {
             parent
                 .spawn(SpriteBundle {
@@ -49,6 +74,8 @@ fn spawn_selector(mut commands: Commands, asset_server: Res<AssetServer>) {
                 })
                 .insert(Name::from("Speed Handle"))
                 .insert(Rotation::default())
+                .insert(render_layers.clone())
+                .insert(With2DScale::new(1.0))
                 .insert(SpeedHandle);
         });
 }
@@ -59,7 +86,7 @@ fn update_selector(
 ) {
     for (mut rotation, mut transform) in query.iter_mut() {
         let diff = rotation.update();
-        transform.rotate_around(Vec3::new(18.0, 0.0, 0.0), Quat::from_rotation_z(diff));
+        transform.rotate_around(Vec3::new(23.0, 0.0, 0.0), Quat::from_rotation_z(diff));
         target_velocity.0 = rotation.actual * TARGET_VELOCITY_FACTOR;
     }
 }
