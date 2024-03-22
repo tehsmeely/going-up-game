@@ -1,5 +1,7 @@
 use bevy::math::Vec3;
 use bevy::prelude::*;
+use derive_new::new;
+use std::time::Duration;
 
 pub struct CorePlugin;
 
@@ -10,9 +12,11 @@ impl Plugin for CorePlugin {
             (
                 With2DScale::apply_system,
                 InScreenSpaceLocation::apply_position_system,
+                TransformTween::update_system,
             ),
         )
         .register_type::<InScreenSpaceLocation>()
+        .register_type::<TransformTween>()
         .register_type::<With2DScale>();
     }
 }
@@ -86,6 +90,41 @@ impl InScreenSpaceLocation {
                 let offset = screen_space_location.anchor.to_inverted_signum()
                     * Vec2::new(screen_space_location.offset, screen_space_location.offset);
                 transform.translation = (raw_position + offset).extend(transform.translation.z);
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Reflect, Component)]
+pub struct TransformTween {
+    pub start: Transform,
+    pub end: Transform,
+    pub duration: f32,
+    pub elapsed: f32,
+}
+
+impl TransformTween {
+    pub fn new(start: Transform, end: Transform, duration: Duration) -> Self {
+        Self {
+            start,
+            end,
+            duration: duration.as_secs_f32(),
+            elapsed: 0.0,
+        }
+    }
+    fn update_system(
+        time: Res<Time>,
+        mut query: Query<(Entity, &mut Transform, &mut Self)>,
+        mut commands: Commands,
+    ) {
+        for (entity, mut transform, mut tween) in query.iter_mut() {
+            tween.elapsed += time.delta_seconds();
+            let t = tween.elapsed / tween.duration;
+            transform.translation = tween.start.translation.lerp(tween.end.translation, t);
+            transform.rotation = tween.start.rotation.lerp(tween.end.rotation, t);
+            transform.scale = tween.start.scale.lerp(tween.end.scale, t);
+            if tween.elapsed >= tween.duration {
+                commands.entity(entity).remove::<Self>();
             }
         }
     }

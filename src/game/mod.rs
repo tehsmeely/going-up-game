@@ -2,6 +2,7 @@ use bevy::app::{App, Plugin};
 
 mod floors;
 mod game;
+mod human_store;
 mod overlay;
 mod speed_selector;
 mod ui;

@@ -1,4 +1,7 @@
 use crate::game::game::MAP_Z;
+use crate::game::human_store;
+use crate::game::human_store::{Human, HumanStore, PositionIndex};
+use crate::loading::TextureAssets;
 use bevy::ecs::system::EntityCommands;
 use bevy::hierarchy::BuildChildren;
 use bevy::prelude::*;
@@ -55,6 +58,7 @@ pub struct FloorRegular {
     floor_num: i32,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum FloorKind {
     Vestibule,
     Shaft,
@@ -102,7 +106,11 @@ pub fn build_floor_map(
     };
     let mut tile_storage = TileStorage::empty(map_size);
 
-    let tile_size = TilemapTileSize { x: 60.0, y: 60.0 };
+    let tile_size_vec2 = Vec2::new(60.0, 60.0);
+    let tile_size = TilemapTileSize {
+        x: tile_size_vec2.x,
+        y: tile_size_vec2.y,
+    };
     let grid_size = tile_size.into();
     let map_type = TilemapType::default();
 
@@ -110,6 +118,7 @@ pub fn build_floor_map(
 
     // Initially populated with raw positions, then will be mapped with the tilemap transform after
     let mut floor_latch_y_positions = Vec::new();
+    let mut vestibule_locations = Vec::new();
 
     let mut child_tiles = Vec::new();
     for x in 0..map_size.x {
@@ -134,6 +143,10 @@ pub fn build_floor_map(
                 .id();
             floor_kind.insert_marker_component(floor_num as i32, &mut commands.entity(tile_entity));
             floor_latch_y_positions.push(floor_num as f32 * tile_size.y);
+            if floor_kind == FloorKind::Vestibule {
+                let pos = tile_size_vec2 * Vec2::new(x as f32, floor_num as f32);
+                vestibule_locations.push(pos);
+            }
             tile_storage.set(&tile_pos, tile_entity);
             child_tiles.push(tile_entity);
         }
@@ -142,6 +155,7 @@ pub fn build_floor_map(
 
     let tilemap_transform = get_tilemap_center_transform(&map_size, &grid_size, &map_type, MAP_Z);
 
+    // Spawn full tilemap
     commands
         .entity(tilemap_entity)
         .insert(TilemapBundle {
@@ -161,6 +175,21 @@ pub fn build_floor_map(
         ..Default::default()
     });
 
+    // Spawn human stores
+    for vestibule_pos in vestibule_locations {
+        let pos = vestibule_pos + tilemap_transform.translation.truncate();
+        commands
+            .spawn(SpatialBundle::from_transform(Transform::from_translation(
+                pos.extend(MAP_Z + 1.0),
+            )))
+            .insert(HumanStore {
+                max_humans: 5,
+                spawn_timer: Timer::from_seconds(1.0, TimerMode::Repeating),
+            })
+            .insert(Name::new("HumanStore"));
+    }
+
+    // Adjust floor latch y positions to be in world space
     let floor_latch_y_positions: Vec<f32> = floor_latch_y_positions
         .iter()
         .map(|y| y + tilemap_transform.translation.y)
@@ -211,10 +240,27 @@ fn spawn_person(commands: &mut Commands, asset_server: &Res<AssetServer>, transl
         .insert(RenderLayers::layer(crate::camera::RENDER_LAYER_MAIN));
 }
 
+pub fn human_store_spawn_humans_system(
+    mut query: Query<(Entity, &mut HumanStore, Option<&Children>)>,
+    human_query: Query<(&PositionIndex), With<Human>>,
+    time: Res<Time>,
+    texture_assets: Res<TextureAssets>,
+    mut commands: Commands,
+) {
+    for (entity, mut human_store, children) in query.iter_mut() {
+        human_store.spawn_timer.tick(time.delta());
+        let num_children = children.map_or(0, |c| c.len());
+        if human_store.spawn_timer.just_finished() && num_children < human_store.max_humans {
+            human_store::add_human_to_store(&human_query, entity, &texture_assets, &mut commands);
+        }
+    }
+}
+
 // TODO: This system needs to generally be a bit more complicated. Floor spawns will be different
 // per floor but also need to be centrally orchestrated. We also will want to spawn multiple, different
 // people and display them accordingly
 // See design doc for more details
+/*
 pub fn spawn_person_system(
     query: Query<(&FloorVestibule, &TilePos, Option<&Person>)>,
     tilemap_query: Query<(&TilemapGridSize, &TilemapType, &Transform)>,
@@ -253,3 +299,5 @@ pub fn spawn_person_system(
         }
     }
 }
+
+ */
