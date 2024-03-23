@@ -1,10 +1,11 @@
 use crate::camera::{CameraTrack, RENDER_LAYER_MAIN};
 use crate::game::floors;
 use crate::game::floors::{
-    human_store_spawn_humans_system, FloorLatchYPositions, FloorRegular, FloorShaft,
+    human_store_spawn_humans_system, FloorLatchYPositions, FloorNum, FloorRegular, FloorShaft,
     FloorVestibule, Floors, LiftLimits, PersonSpawnTimer, ShaftCentreX,
 };
 use crate::game::human_store;
+use crate::game::human_store::{HowMany, Human, HumanStore, PositionIndex};
 use crate::game::speed_selector::TargetVelocity;
 use crate::game::world_gen::Floor;
 use crate::history_store::HistoryStore;
@@ -42,6 +43,7 @@ impl Plugin for GamePlugin {
                 debug_lift_mode_text,
                 floor_proximity_system,
                 proximity_timer_display_system,
+                floor_proximity_effect_system.after(floor_proximity_system),
                 human_store_spawn_humans_system,
                 human_store::human_store_gizmo_system,
             )
@@ -63,7 +65,11 @@ impl Plugin for GamePlugin {
         .register_type::<FloorProximitySensor>()
         .register_type::<FloorShaft>()
         .register_type::<FloorVestibule>()
-        .register_type::<FloorRegular>();
+        .register_type::<FloorRegular>()
+        .register_type::<FloorNum>()
+        .register_type::<HumanStore>()
+        .register_type::<PositionIndex>()
+        .register_type::<Human>();
     }
 }
 
@@ -285,6 +291,32 @@ fn floor_proximity_system(
                     closest_floor,
                     Timer::new(sensor.floor_timer_duration, TimerMode::Once),
                 ));
+            }
+        }
+    }
+}
+
+fn floor_proximity_effect_system(
+    query: Query<&FloorProximity>,
+    human_store_query: Query<(Entity, &FloorNum), With<HumanStore>>,
+    human_query: Query<(Entity, &PositionIndex, &Parent), (With<Human>)>,
+    mut commands: Commands,
+) {
+    for proximity in query.iter() {
+        if proximity.time_in_proximity.just_finished() {
+            println!("Collecting from Floor {}!!", proximity.floor_num);
+            // Looping the second query inside here seems like it'd be O(n^2) but in practice
+            // there will only ever be one floor proximity at a time, so it's fine.
+            for (store_entity, floor_num) in human_store_query.iter() {
+                if floor_num.0 == proximity.floor_num {
+                    let picked_up = human_store::remove_humans(
+                        &human_query,
+                        store_entity,
+                        &mut commands,
+                        HowMany::All,
+                    );
+                    println!("Picked up {} humies", picked_up);
+                }
             }
         }
     }

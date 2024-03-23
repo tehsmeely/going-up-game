@@ -20,7 +20,7 @@ fn main() {
             DefaultPlugins
                 .set(WindowPlugin {
                     primary_window: Some(Window {
-                        title: "Going Up".to_string(), // ToDo
+                        title: "Going Up".to_string(),
                         // Bind to canvas included in `index.html`
                         canvas: Some("#bevy".to_owned()),
                         // The canvas size is constrained in index.html and build/web/styles.css

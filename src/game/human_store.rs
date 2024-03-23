@@ -1,27 +1,40 @@
 use crate::core::TransformTween;
-use crate::game::floors::{FloorVestibule, Person, PersonSpawnTimer};
+use crate::game::floors::{FloorNum, FloorVestibule, Person, PersonSpawnTimer};
 use crate::game::game::MAP_Z;
 use crate::loading::TextureAssets;
 use bevy::prelude::*;
-use bevy::utils::tracing::dispatcher::with_default;
-use bevy_ecs_tilemap::map::{TilemapGridSize, TilemapType};
-use bevy_ecs_tilemap::prelude::TilePos;
-use rand::prelude::SliceRandom;
-use rand::thread_rng;
-use std::cmp::max;
 use std::time::Duration;
 
-#[derive(Clone, Debug, Component)]
+#[derive(Clone, Debug, Component, Reflect)]
 pub struct HumanStore {
     pub spawn_timer: Timer,
     pub max_humans: usize,
     // TODO: Other config options here like: Human kind spawn chance, etc
 }
 
-#[derive(Clone, Debug, Component)]
+#[derive(Debug, Bundle)]
+pub struct HumanStoreBundle {
+    human_store: HumanStore,
+    spatial_bundle: SpatialBundle,
+    floor_num: FloorNum,
+    name: Name,
+}
+
+impl HumanStoreBundle {
+    pub fn new(human_store: HumanStore, floor_num: i32, translation: Vec3) -> Self {
+        HumanStoreBundle {
+            human_store,
+            spatial_bundle: SpatialBundle::from_transform(Transform::from_translation(translation)),
+            floor_num: FloorNum(floor_num),
+            name: Name::new("Human Store"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Component, Reflect)]
 pub struct Human;
 
-#[derive(Clone, Debug, Component)]
+#[derive(Clone, Debug, Component, Reflect)]
 pub struct PositionIndex(usize);
 
 impl PositionIndex {
@@ -38,7 +51,7 @@ impl PositionIndex {
 }
 
 pub fn add_human_to_store(
-    human_query: &Query<(&PositionIndex), (With<Human>)>,
+    human_query: &Query<(&PositionIndex, &Parent), (With<Human>)>,
     parent_entity: Entity,
     texture_assets: &Res<TextureAssets>,
     commands: &mut Commands,
@@ -46,7 +59,13 @@ pub fn add_human_to_store(
     println!("Adding human to store");
     let max_index = human_query
         .iter()
-        .map(|(position_index)| position_index.0)
+        .filter_map(|(position_index, parent)| {
+            if parent.get() == parent_entity {
+                Some(position_index.0)
+            } else {
+                None
+            }
+        })
         .max();
     let position_index = match max_index {
         Some(i) => PositionIndex(i + 1),
@@ -70,25 +89,38 @@ pub fn add_human_to_store(
         .set_parent(parent_entity);
 }
 
-fn remove_human(
+pub enum HowMany {
+    All,
+    N(usize),
+}
+pub fn remove_humans(
     human_query: &Query<(Entity, &PositionIndex, &Parent), (With<Human>)>,
     parent_entity: Entity,
     commands: &mut Commands,
-) {
-    let max_index = human_query
+    num_humans: HowMany,
+) -> usize {
+    let mut indices: Vec<usize> = human_query
         .iter()
         .map(|(_, position_index, _)| position_index.0)
-        .max()
-        .unwrap_or(0);
-    let mut entity_to_remove = None;
+        .collect();
+    indices.sort();
+    indices.reverse();
+    let slice_len = match num_humans {
+        HowMany::All => indices.len(),
+        HowMany::N(n) => n.min(indices.len()),
+    };
+    let indices_to_remove = &indices[..slice_len];
+
+    let mut entities_to_remove = vec![];
     for (entity, position_index, parent) in human_query.iter() {
-        if position_index.0 == max_index && parent.get() == parent_entity {
-            entity_to_remove = Some(entity);
+        if indices_to_remove.contains(&position_index.0) && parent.get() == parent_entity {
+            entities_to_remove.push(entity);
         }
     }
-    if let Some(entity_to_remove) = entity_to_remove {
-        commands.entity(entity_to_remove).despawn_recursive();
+    for entity_to_remove in entities_to_remove.iter() {
+        commands.entity(*entity_to_remove).despawn_recursive();
     }
+    slice_len
 }
 
 //

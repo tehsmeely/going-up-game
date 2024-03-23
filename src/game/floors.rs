@@ -1,6 +1,6 @@
 use crate::game::game::MAP_Z;
 use crate::game::human_store;
-use crate::game::human_store::{Human, HumanStore, PositionIndex};
+use crate::game::human_store::{Human, HumanStore, HumanStoreBundle, PositionIndex};
 use crate::loading::TextureAssets;
 use bevy::ecs::system::EntityCommands;
 use bevy::hierarchy::BuildChildren;
@@ -145,7 +145,7 @@ pub fn build_floor_map(
             floor_latch_y_positions.push(floor_num as f32 * tile_size.y);
             if floor_kind == FloorKind::Vestibule {
                 let pos = tile_size_vec2 * Vec2::new(x as f32, floor_num as f32);
-                vestibule_locations.push(pos);
+                vestibule_locations.push((floor_num as i32, pos));
             }
             tile_storage.set(&tile_pos, tile_entity);
             child_tiles.push(tile_entity);
@@ -176,17 +176,16 @@ pub fn build_floor_map(
     });
 
     // Spawn human stores
-    for vestibule_pos in vestibule_locations {
+    for (floor_num, vestibule_pos) in vestibule_locations {
         let pos = vestibule_pos + tilemap_transform.translation.truncate();
-        commands
-            .spawn(SpatialBundle::from_transform(Transform::from_translation(
-                pos.extend(MAP_Z + 1.0),
-            )))
-            .insert(HumanStore {
+        commands.spawn(HumanStoreBundle::new(
+            HumanStore {
                 max_humans: 5,
                 spawn_timer: Timer::from_seconds(1.0, TimerMode::Repeating),
-            })
-            .insert(Name::new("HumanStore"));
+            },
+            floor_num,
+            pos.extend(MAP_Z + 1.0),
+        ));
     }
 
     // Adjust floor latch y positions to be in world space
@@ -242,7 +241,7 @@ fn spawn_person(commands: &mut Commands, asset_server: &Res<AssetServer>, transl
 
 pub fn human_store_spawn_humans_system(
     mut query: Query<(Entity, &mut HumanStore, Option<&Children>)>,
-    human_query: Query<(&PositionIndex), With<Human>>,
+    human_query: Query<(&PositionIndex, &Parent), With<Human>>,
     time: Res<Time>,
     texture_assets: Res<TextureAssets>,
     mut commands: Commands,
@@ -301,3 +300,6 @@ pub fn spawn_person_system(
 }
 
  */
+
+#[derive(Clone, Debug, Component, Reflect)]
+pub struct FloorNum(pub i32);

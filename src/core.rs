@@ -129,3 +129,40 @@ impl TransformTween {
         }
     }
 }
+
+pub trait Lerpable {
+    fn lerp(&self, other: Self, t: f32) -> Self;
+}
+#[derive(Clone, Debug, Reflect, Component)]
+struct LerpTween<T> {
+    from: T,
+    to: T,
+    elapsed: f32,
+    duration: f32,
+}
+
+impl<T: Lerpable + Component + Copy> LerpTween<T> {
+    fn new(from: T, to: T, duration: Duration) -> Self {
+        Self {
+            from,
+            to,
+            elapsed: 0.0,
+            duration: duration.as_secs_f32(),
+        }
+    }
+    fn update_system(
+        time: Res<Time>,
+        mut query: Query<(Entity, &mut T, &mut Self)>,
+        mut commands: Commands,
+    ) {
+        for (entity, mut t, mut tween) in query.iter_mut() {
+            tween.elapsed += time.delta_seconds();
+            let s = tween.elapsed / tween.duration;
+            let new_t = tween.from.lerp(tween.to, s);
+            *t = new_t;
+            if tween.elapsed >= tween.duration {
+                commands.entity(entity).remove::<Self>();
+            }
+        }
+    }
+}
