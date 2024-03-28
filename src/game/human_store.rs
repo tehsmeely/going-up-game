@@ -35,12 +35,17 @@ impl HumanStoreBundle {
 pub struct Human;
 
 #[derive(Clone, Debug, Component, Reflect)]
+pub struct FloorDesire {
+    pub floor_num: i32,
+}
+
+#[derive(Clone, Debug, Component, Reflect)]
 pub struct PositionIndex(usize);
 
 impl PositionIndex {
     fn to_translation(&self) -> Vec3 {
         let start_x = 15.0;
-        let x_offset = self.0 as f32 * 9.0;
+        let x_offset = self.0 as f32 * 20.0;
         let z_offset = self.0 as f32 * 0.1;
         Vec3::new(start_x - x_offset, 0.0, MAP_Z + 0.1 + z_offset)
     }
@@ -54,6 +59,7 @@ pub fn add_human_to_store(
     human_query: &Query<(&PositionIndex, &Parent), (With<Human>)>,
     parent_entity: Entity,
     texture_assets: &Res<TextureAssets>,
+    desired_floor: i32,
     commands: &mut Commands,
 ) {
     println!("Adding human to store");
@@ -86,6 +92,9 @@ pub fn add_human_to_store(
             final_transform,
             Duration::from_secs(1),
         ))
+        .insert(FloorDesire {
+            floor_num: desired_floor,
+        })
         .set_parent(parent_entity);
 }
 
@@ -146,6 +155,41 @@ pub fn human_store_gizmo_system(
                 3.0 * (radius as f32),
                 Color::WHITE,
             );
+        }
+    }
+}
+
+pub fn floor_desire_system(
+    desire_query: Query<(Entity, &FloorDesire, Option<&Children>), Without<Text>>,
+    mut text_query: Query<(&mut Text), With<Text>>,
+    mut commands: Commands,
+) {
+    for (entity, floor_desire, maybe_children) in desire_query.iter() {
+        let mut text_found = false;
+        if let Some(children) = maybe_children {
+            for child in children.iter() {
+                if let Ok(mut text) = text_query.get_mut(*child) {
+                    text.sections[0].value = format!("{}", floor_desire.floor_num);
+                    text_found = true;
+                }
+            }
+        }
+        if !text_found {
+            let text = Text::from_section(
+                format!("{}", floor_desire.floor_num),
+                TextStyle {
+                    font_size: 20.0,
+                    color: Color::WHITE,
+                    ..Default::default()
+                },
+            );
+            commands
+                .spawn(Text2dBundle {
+                    text,
+                    transform: Transform::from_translation(Vec3::new(10.0, 10.0, 0.0)),
+                    ..Default::default()
+                })
+                .set_parent(entity);
         }
     }
 }

@@ -5,7 +5,7 @@ use crate::game::floors::{
     FloorVestibule, Floors, LiftLimits, PersonSpawnTimer, ShaftCentreX,
 };
 use crate::game::human_store;
-use crate::game::human_store::{HowMany, Human, HumanStore, PositionIndex};
+use crate::game::human_store::{FloorDesire, HowMany, Human, HumanStore, PositionIndex};
 use crate::game::speed_selector::TargetVelocity;
 use crate::game::world_gen::Floor;
 use crate::history_store::HistoryStore;
@@ -46,6 +46,7 @@ impl Plugin for GamePlugin {
                 floor_proximity_effect_system.after(floor_proximity_system),
                 human_store_spawn_humans_system,
                 human_store::human_store_gizmo_system,
+                human_store::floor_desire_system,
             )
                 .run_if(in_state(GameState::Playing)),
         )
@@ -69,7 +70,8 @@ impl Plugin for GamePlugin {
         .register_type::<FloorNum>()
         .register_type::<HumanStore>()
         .register_type::<PositionIndex>()
-        .register_type::<Human>();
+        .register_type::<Human>()
+        .register_type::<FloorDesire>();
     }
 }
 

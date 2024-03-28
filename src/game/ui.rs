@@ -108,35 +108,53 @@ impl HeldHumans {
         let size = 24.0;
         egui::Window::new("Held Humans")
             .movable(false)
-            .resizable(false)
+            //.resizable(false)
             .anchor(Align2::RIGHT_TOP, bevy_egui::egui::Vec2::ZERO)
             .title_bar(false)
             .frame(frame)
             .show(contexts.ctx_mut(), |ui| {
-                TableBuilder::new(ui)
-                    .column(Column::auto())
-                    .column(Column::auto())
-                    .body(|mut body| {
-                        for (dest_floor, count) in humans.humans.iter() {
-                            body.row(30.0, |mut row| {
-                                row.col(|ui| {
-                                    ui.label(
-                                        RichText::new(dest_floor.to_string())
-                                            .color(text_color)
-                                            .size(size),
-                                    );
-                                });
-                                row.col(|ui| {
-                                    ui.label(
-                                        RichText::new(count.to_string())
-                                            .color(text_color)
-                                            .size(size),
-                                    );
-                                });
-                            })
-                        }
-                    })
+                for (dest_floor, count) in humans.humans.iter() {
+                    ui.label(
+                        RichText::new(format!("{}: {}", dest_floor, count))
+                            .color(text_color)
+                            .size(size),
+                    );
+                    ui.separator();
+                }
             });
+        /*
+        TableBuilder::new(ui)
+            .column(Column::auto())
+            .column(Column::auto())
+            .column(Column::auto())
+            .body(|mut body| {
+                for (dest_floor, count) in humans.humans.iter() {
+                    body.row(30.0, |mut row| {
+                        row.col(|ui| {
+                            ui.label(
+                                RichText::new(dest_floor.to_string())
+                                    .color(text_color)
+                                    .size(size),
+                            );
+                        });
+                        row.col(|ui| {
+                            ui.label(
+                                RichText::new("aaaaaaaaaaaaaaaaaaaaa")
+                                    .color(text_color)
+                                    .size(size),
+                            );
+                        });
+                        row.col(|ui| {
+                            ui.label(
+                                RichText::new(count.to_string())
+                                    .color(text_color)
+                                    .size(size),
+                            );
+                        });
+                    })
+                }
+            })
+         */
     }
 }
 

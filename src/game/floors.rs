@@ -180,7 +180,7 @@ pub fn build_floor_map(
         let pos = vestibule_pos + tilemap_transform.translation.truncate();
         commands.spawn(HumanStoreBundle::new(
             HumanStore {
-                max_humans: 5,
+                max_humans: 2,
                 spawn_timer: Timer::from_seconds(1.0, TimerMode::Repeating),
             },
             floor_num,
@@ -250,7 +250,19 @@ pub fn human_store_spawn_humans_system(
         human_store.spawn_timer.tick(time.delta());
         let num_children = children.map_or(0, |c| c.len());
         if human_store.spawn_timer.just_finished() && num_children < human_store.max_humans {
-            human_store::add_human_to_store(&human_query, entity, &texture_assets, &mut commands);
+            let desired_floor = {
+                // TODO: Definitely needs enrichment, will be influenced by things like which floor
+                // we're spawning on, time of day, human kind, etc
+                let mut rng = thread_rng();
+                rng.gen_range(0..10)
+            };
+            human_store::add_human_to_store(
+                &human_query,
+                entity,
+                &texture_assets,
+                desired_floor,
+                &mut commands,
+            );
         }
     }
 }
