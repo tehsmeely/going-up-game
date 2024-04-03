@@ -46,7 +46,6 @@ impl Plugin for GamePlugin {
                 proximity_timer_display_system,
                 floor_proximity_effect_system.after(floor_proximity_system),
                 human_store_spawn_humans_system,
-                human_store::human_store_gizmo_system,
                 human_store::floor_desire_system,
             )
                 .run_if(in_state(GameState::Playing)),

@@ -44,14 +44,14 @@ pub struct PositionIndex(usize);
 
 impl PositionIndex {
     fn to_translation(&self) -> Vec3 {
-        let start_x = -15.0;
-        let x_offset = self.0 as f32 * 20.0;
+        let start_x = 14.0;
+        let x_offset = self.0 as f32 * 23.0;
         let z_offset = self.0 as f32 * 0.1;
-        Vec3::new(start_x - x_offset, 0.0, MAP_Z + 0.1 + z_offset)
+        Vec3::new(start_x - x_offset, -10.0, MAP_Z + 0.1 + z_offset)
     }
 
     fn default_translation() -> Vec3 {
-        Vec3::new(-100.0, 0.0, MAP_Z + 0.1)
+        Vec3::new(-100.0, -10.0, MAP_Z + 0.1)
     }
 }
 
@@ -95,6 +95,7 @@ pub fn add_human_to_store(
         .insert(FloorDesire {
             floor_num: desired_floor,
         })
+        .insert(Name::new("Human"))
         .set_parent(parent_entity);
 }
 
@@ -143,21 +144,6 @@ fn human_positioning_system(
 ) {
     for (position_index, mut transform) in human_query.iter_mut() {
         transform.translation = position_index.to_translation();
-    }
-}
-
-pub fn human_store_gizmo_system(
-    mut human_store_query: Query<(&Transform), (With<HumanStore>)>,
-    mut gizmos: Gizmos,
-) {
-    for human_store_transform in human_store_query.iter_mut() {
-        for radius in 1..3 {
-            gizmos.circle_2d(
-                human_store_transform.translation.truncate(),
-                3.0 * (radius as f32),
-                Color::WHITE,
-            );
-        }
     }
 }
 

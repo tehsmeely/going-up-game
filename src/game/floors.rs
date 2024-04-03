@@ -207,7 +207,7 @@ pub fn build_floor_map(
                             },
                         )
                         .with_alignment(TextAlignment::Center),
-                        transform: Transform::from_translation(Vec3::new(0.0, 0.0, 0.1)),
+                        transform: Transform::from_translation(Vec3::new(6.6, 18.1, 0.1)),
                         ..default()
                     })
                     .insert(RenderLayers::layer(crate::camera::RENDER_LAYER_MAIN));
