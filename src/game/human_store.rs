@@ -26,7 +26,7 @@ impl HumanStoreBundle {
             human_store,
             spatial_bundle: SpatialBundle::from_transform(Transform::from_translation(translation)),
             floor_num: FloorNum(floor_num),
-            name: Name::new("Human Store"),
+            name: Name::new(format!("Human Store : {}", floor_num)),
         }
     }
 }
@@ -44,7 +44,7 @@ pub struct PositionIndex(usize);
 
 impl PositionIndex {
     fn to_translation(&self) -> Vec3 {
-        let start_x = 15.0;
+        let start_x = -15.0;
         let x_offset = self.0 as f32 * 20.0;
         let z_offset = self.0 as f32 * 0.1;
         Vec3::new(start_x - x_offset, 0.0, MAP_Z + 0.1 + z_offset)
@@ -103,14 +103,14 @@ pub enum HowMany {
     N(usize),
 }
 pub fn remove_humans(
-    human_query: &Query<(Entity, &PositionIndex, &Parent), (With<Human>)>,
+    human_query: &Query<(Entity, &FloorDesire, &PositionIndex, &Parent), (With<Human>)>,
     parent_entity: Entity,
     commands: &mut Commands,
     num_humans: HowMany,
-) -> usize {
+) -> Vec<i32> {
     let mut indices: Vec<usize> = human_query
         .iter()
-        .map(|(_, position_index, _)| position_index.0)
+        .map(|(_, _, position_index, _)| position_index.0)
         .collect();
     indices.sort();
     indices.reverse();
@@ -121,15 +121,17 @@ pub fn remove_humans(
     let indices_to_remove = &indices[..slice_len];
 
     let mut entities_to_remove = vec![];
-    for (entity, position_index, parent) in human_query.iter() {
+    let mut removed_desired_floors = vec![];
+    for (entity, floor_desire, position_index, parent) in human_query.iter() {
         if indices_to_remove.contains(&position_index.0) && parent.get() == parent_entity {
             entities_to_remove.push(entity);
+            removed_desired_floors.push(floor_desire.floor_num);
         }
     }
     for entity_to_remove in entities_to_remove.iter() {
         commands.entity(*entity_to_remove).despawn_recursive();
     }
-    slice_len
+    removed_desired_floors
 }
 
 //

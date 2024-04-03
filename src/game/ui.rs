@@ -13,9 +13,6 @@ pub struct GameUiPlugin;
 impl Plugin for GameUiPlugin {
     fn build(&self, app: &mut App) {
         let mut humans = HashMap::new();
-        humans.insert(10, 1);
-        humans.insert(5, 2);
-        humans.insert(7, 3);
         app.add_systems(
             Update,
             (
@@ -102,6 +99,19 @@ pub struct HeldHumans {
 }
 
 impl HeldHumans {
+    pub fn add(&mut self, floors: Vec<i32>) {
+        for floor_num in floors.into_iter() {
+            if let Some(count) = self.humans.get_mut(&floor_num) {
+                *count += 1;
+            } else {
+                self.humans.insert(floor_num, 1);
+            }
+        }
+    }
+
+    pub fn take_for_floor(&mut self, floor_num: i32) -> usize {
+        self.humans.remove(&floor_num).unwrap_or(0)
+    }
     fn update_system(mut humans: Res<Self>, mut contexts: EguiContexts) {
         let frame = default_frame();
         let text_color = Color32::WHITE;

@@ -91,6 +91,14 @@ impl FloorKind {
     }
 }
 
+pub fn floor_num_pretty_str(floor_num: i32) -> String {
+    match floor_num.cmp(&0i32) {
+        Ordering::Equal => "G".to_string(),
+        Ordering::Greater => format!("{}F", floor_num),
+        Ordering::Less => format!("B{}", -floor_num),
+    }
+}
+
 pub fn build_floor_map(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -178,14 +186,32 @@ pub fn build_floor_map(
     // Spawn human stores
     for (floor_num, vestibule_pos) in vestibule_locations {
         let pos = vestibule_pos + tilemap_transform.translation.truncate();
-        commands.spawn(HumanStoreBundle::new(
-            HumanStore {
-                max_humans: 2,
-                spawn_timer: Timer::from_seconds(1.0, TimerMode::Repeating),
-            },
-            floor_num,
-            pos.extend(MAP_Z + 1.0),
-        ));
+        commands
+            .spawn(HumanStoreBundle::new(
+                HumanStore {
+                    max_humans: 2,
+                    spawn_timer: Timer::from_seconds(1.0, TimerMode::Repeating),
+                },
+                floor_num,
+                pos.extend(MAP_Z + 1.0),
+            ))
+            .with_children(|parent| {
+                parent
+                    .spawn(Text2dBundle {
+                        text: Text::from_section(
+                            floor_num_pretty_str(floor_num),
+                            TextStyle {
+                                font_size: 25.0,
+                                color: Color::WHITE,
+                                ..Default::default()
+                            },
+                        )
+                        .with_alignment(TextAlignment::Center),
+                        transform: Transform::from_translation(Vec3::new(0.0, 0.0, 0.1)),
+                        ..default()
+                    })
+                    .insert(RenderLayers::layer(crate::camera::RENDER_LAYER_MAIN));
+            });
     }
 
     // Adjust floor latch y positions to be in world space

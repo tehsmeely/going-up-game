@@ -7,6 +7,7 @@ use crate::game::floors::{
 use crate::game::human_store;
 use crate::game::human_store::{FloorDesire, HowMany, Human, HumanStore, PositionIndex};
 use crate::game::speed_selector::TargetVelocity;
+use crate::game::ui::HeldHumans;
 use crate::game::world_gen::Floor;
 use crate::history_store::HistoryStore;
 use crate::input_action::InputAction;
@@ -301,23 +302,35 @@ fn floor_proximity_system(
 fn floor_proximity_effect_system(
     query: Query<&FloorProximity>,
     human_store_query: Query<(Entity, &FloorNum), With<HumanStore>>,
-    human_query: Query<(Entity, &PositionIndex, &Parent), (With<Human>)>,
+    human_query: Query<(Entity, &FloorDesire, &PositionIndex, &Parent), (With<Human>)>,
     mut commands: Commands,
+    mut held_humans: ResMut<HeldHumans>,
 ) {
     for proximity in query.iter() {
         if proximity.time_in_proximity.just_finished() {
-            println!("Collecting from Floor {}!!", proximity.floor_num);
+            println!(
+                "Collecting from and delivering to Floor {}!!",
+                proximity.floor_num
+            );
+            let humans_desiring_this_floor = held_humans.take_for_floor(proximity.floor_num);
+            println!("Delivered humans: {:?}", humans_desiring_this_floor);
+
             // Looping the second query inside here seems like it'd be O(n^2) but in practice
             // there will only ever be one floor proximity at a time, so it's fine.
             for (store_entity, floor_num) in human_store_query.iter() {
                 if floor_num.0 == proximity.floor_num {
-                    let picked_up = human_store::remove_humans(
+                    let picked_up_floor_desires = human_store::remove_humans(
                         &human_query,
                         store_entity,
                         &mut commands,
                         HowMany::All,
                     );
-                    println!("Picked up {} humies", picked_up);
+                    println!(
+                        "Picked up {} humies ({:?})",
+                        picked_up_floor_desires.len(),
+                        picked_up_floor_desires
+                    );
+                    held_humans.add(picked_up_floor_desires);
                 }
             }
         }
