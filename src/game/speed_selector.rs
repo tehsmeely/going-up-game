@@ -1,8 +1,10 @@
+use crate::camera::OverlayCamera;
 use crate::core::{InScreenSpaceLocation, ScreenSpaceAnchor, With2DScale};
 use crate::{GameState, InputAction};
 use bevy::asset::AssetLoader;
 use bevy::prelude::*;
 use bevy::render::view::RenderLayers;
+use bevy::window::PrimaryWindow;
 use leafwing_input_manager::action_state::ActionState;
 use std::thread::spawn;
 
@@ -22,33 +24,37 @@ const SCALE: f32 = 2.0;
 
 pub struct SpeedSelectorPlugin;
 
+/*
+TODO: Bevy 13
+#[derive(Default, Reflext, GizmoConfigGroup)]
+struct OverlayGizmos {}
+ */
+
 impl Plugin for SpeedSelectorPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(GameState::Playing), (spawn_selector))
             .add_systems(
                 Update,
-                (update_selector, handle_selector_input).run_if(in_state(GameState::Playing)),
+                (
+                    update_selector,
+                    handle_selector_input,
+                    cursor_position_system,
+                    mouse_selection_rect_debug_gizmo,
+                    position_cursor_selection_rect_system,
+                )
+                    .run_if(in_state(GameState::Playing)),
             )
+            /*
+            TODO: Bevy 13
+            .init_gizmo_group::<OverlayGizmos>()
+             */
             .insert_resource(TargetVelocity(0.0))
-            .register_type::<Rotation>();
+            .insert_resource(SelectionEnabled(false))
+            .register_type::<Rotation>()
+            .register_type::<SelectionEnabled>()
+            .register_type::<MouseSelectionRect>();
     }
 }
-
-/*
-fn position_selector(
-    mut dial_query: Query<(&mut Transform), (With<SpeedDial>, Without<SpeedHandle>)>,
-    windows: Query<&Window>,
-) {
-    if let Ok(window) = windows.get_single() {
-        let offset = 80.0;
-        let x = (window.width() / 2.0) - offset;
-        for (mut transform) in dial_query.iter_mut() {
-            transform.translation = Vec3::new(x, 0.0, DIAL_Z);
-        }
-    }
-}
-
- */
 
 fn spawn_selector(mut commands: Commands, asset_server: Res<AssetServer>) {
     let render_layers = RenderLayers::layer(crate::camera::RENDER_LAYER_OVERLAY);
@@ -60,6 +66,10 @@ fn spawn_selector(mut commands: Commands, asset_server: Res<AssetServer>) {
             transform: Transform::from_translation(Vec2::default().extend(DIAL_Z)),
             ..default()
         })
+        .insert(MouseSelectionRect::new(
+            Vec2::new(100.0, 100.0),
+            Rect::new(0.0, 0.0, 0.0, 0.0),
+        ))
         .insert(Name::from("Speed Dial"))
         .insert(SpeedDial)
         .insert(render_layers.clone())
@@ -88,6 +98,73 @@ fn update_selector(
         let diff = rotation.update();
         transform.rotate_around(Vec3::new(23.0, 0.0, 0.0), Quat::from_rotation_z(diff));
         target_velocity.0 = rotation.actual * TARGET_VELOCITY_FACTOR;
+    }
+}
+
+fn mouse_selection_rect_debug_gizmo(
+    selector_query: Query<(&MouseSelectionRect), With<SpeedDial>>,
+    mut gizmos: Gizmos<OverlayGizmos>,
+) {
+    for (selector_rect) in selector_query.iter() {
+        gizmos.rect_2d(
+            selector_rect.world_rect.center(),
+            0.0,
+            selector_rect.world_rect.half_size(),
+            Color::RED,
+        );
+    }
+}
+
+#[derive(Debug, Component, Reflect)]
+struct MouseSelectionRect {
+    size: Vec2,
+    world_rect: Rect,
+}
+impl MouseSelectionRect {
+    fn new(size: Vec2, world_rect: Rect) -> Self {
+        Self { size, world_rect }
+    }
+
+    fn set_middle(&mut self, middle: Vec2) {
+        self.world_rect = Rect::new(
+            middle.x - self.size.x / 2.0,
+            middle.y - self.size.y / 2.0,
+            middle.x + self.size.x / 2.0,
+            middle.y + self.size.y / 2.0,
+        );
+    }
+}
+#[derive(Debug, Resource, Reflect)]
+struct SelectionEnabled(bool);
+
+fn cursor_position_system(
+    window_query: Query<&Window, With<PrimaryWindow>>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<OverlayCamera>>,
+    selector_query: Query<(&MouseSelectionRect), With<SpeedDial>>,
+    mut selection_enabled: ResMut<SelectionEnabled>,
+) {
+    let (camera, camera_transform) = camera_query.single();
+    let window = window_query.single();
+    let selector_rect = selector_query.single();
+
+    if let Some(world_position) = window
+        .cursor_position()
+        .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor))
+        .map(|ray| ray.origin.truncate())
+    {
+        selection_enabled.0 = selector_rect.world_rect.contains(world_position);
+        println!("Selection enabled: {}", selection_enabled.0);
+    }
+}
+
+fn position_cursor_selection_rect_system(
+    mut selector_query: Query<
+        (&Transform, &mut MouseSelectionRect),
+        (With<SpeedDial>, Changed<Transform>),
+    >,
+) {
+    for (transform, mut selector_rect) in selector_query.iter_mut() {
+        selector_rect.set_middle(transform.translation.truncate());
     }
 }
 
