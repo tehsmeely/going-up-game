@@ -1,13 +1,11 @@
 [package]
-name = "bevy_game" # ToDo
+name = "going_up"
 version = "0.1.0"
 publish = false
-authors = ["Niklas Eicker <git@nikl.me>"] # ToDo: you are the author ;)
+authors = ["Jimty Honger"]
 edition = "2021"
 exclude = ["dist", "build", "assets", "credits"]
 
-[workspace]
-members = ["mobile"]
 
 [profile.dev.package."*"]
 opt-level = 3
@@ -41,7 +39,7 @@ frame-time-diagnostics = []
 # All of Bevy's default features exept for the audio related ones (bevy_audio, vorbis), since they clash with bevy_kira_audio
 #   and android_shared_stdcxx, since that is covered in `mobile`
 [dependencies]
-bevy = { version = "0.12", default-features = false, features = [
+bevy = { version = "0.13.1", default-features = false, features = [
     "animation",
     "bevy_asset",
     "bevy_gilrs",
@@ -63,20 +61,20 @@ bevy = { version = "0.12", default-features = false, features = [
     "default_font",
     "webgl2",
 ] }
-bevy_kira_audio = { version = "0.18" }
-bevy_asset_loader = { version = "0.19" }
+bevy_kira_audio = { version = "0.19" }
+bevy_asset_loader = { version = "0.20" }
 rand = "0.8.3"
 webbrowser = { version = "0.8", features = ["hardened"] }
 
 # keep the following in sync with Bevy's dependencies
-winit = { version = "0.28.7", default-features = false }
-image = { version = "0.24", default-features = false }
+winit = { version = "0.29.15", default-features = false }
+image = { version = "0.25.1", default-features = false }
 bevy_ecs_tilemap = { git = "https://github.com/StarArawn/bevy_ecs_tilemap.git" }
-bevy-inspector-egui = "0.22.1"
-bevy_egui = "0.24.0"
-egui_extras = "0.24.2"
-leafwing-input-manager = { version = "0.11.2" } # , features = ["egui"] }
-egui_plot = "0.24.0"
+bevy-inspector-egui = { git = "https://github.com/jakobhellermann/bevy-inspector-egui.git" }
+bevy_egui = "0.25.0"
+egui_extras = "0.26.2"
+leafwing-input-manager = { version = "0.13.3" } # , features = ["egui"] }
+egui_plot = "0.26.2"
 derive-new = "0.6.0"
 
 [build-dependencies]

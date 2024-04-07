@@ -23,6 +23,7 @@ use bevy::app::App;
 use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy_ecs_tilemap::TilemapPlugin;
+use bevy_inspector_egui::bevy_egui::EguiPlugin;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
 // This example game uses States to separate logic
@@ -43,7 +44,7 @@ pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        app.add_state::<GameState>().add_plugins((
+        app.init_state::<GameState>().add_plugins((
             LoadingPlugin,
             MenuPlugin,
             CoreGamePlugin,
@@ -54,6 +55,7 @@ impl Plugin for GamePlugin {
         app.add_plugins((
             InputManagerPlugin::<InputAction>::default(),
             TilemapPlugin,
+            EguiPlugin,
             WorldInspectorPlugin::new(),
         ));
         #[cfg(feature = "frame-time-diagnostics")]

@@ -24,35 +24,39 @@ const SCALE: f32 = 2.0;
 
 pub struct SpeedSelectorPlugin;
 
-/*
-TODO: Bevy 13
-#[derive(Default, Reflext, GizmoConfigGroup)]
+#[derive(Default, Reflect, GizmoConfigGroup)]
 struct OverlayGizmos {}
- */
 
 impl Plugin for SpeedSelectorPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Playing), (spawn_selector))
-            .add_systems(
-                Update,
-                (
-                    update_selector,
-                    handle_selector_input,
-                    cursor_position_system,
-                    mouse_selection_rect_debug_gizmo,
-                    position_cursor_selection_rect_system,
-                )
-                    .run_if(in_state(GameState::Playing)),
+        app.add_systems(
+            OnEnter(GameState::Playing),
+            (spawn_selector, OverlayGizmos::setup),
+        )
+        .add_systems(
+            Update,
+            (
+                update_selector,
+                handle_selector_input,
+                cursor_position_system,
+                mouse_selection_rect_debug_gizmo,
+                position_cursor_selection_rect_system,
             )
-            /*
-            TODO: Bevy 13
-            .init_gizmo_group::<OverlayGizmos>()
-             */
-            .insert_resource(TargetVelocity(0.0))
-            .insert_resource(SelectionEnabled(false))
-            .register_type::<Rotation>()
-            .register_type::<SelectionEnabled>()
-            .register_type::<MouseSelectionRect>();
+                .run_if(in_state(GameState::Playing)),
+        )
+        .init_gizmo_group::<OverlayGizmos>()
+        .insert_resource(TargetVelocity(0.0))
+        .insert_resource(SelectionEnabled(false))
+        .register_type::<Rotation>()
+        .register_type::<SelectionEnabled>()
+        .register_type::<MouseSelectionRect>();
+    }
+}
+
+impl OverlayGizmos {
+    fn setup(mut config_store: ResMut<GizmoConfigStore>) {
+        let (config, _) = config_store.config_mut::<Self>();
+        config.render_layers = RenderLayers::layer(crate::camera::RENDER_LAYER_OVERLAY);
     }
 }
 
@@ -67,7 +71,7 @@ fn spawn_selector(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..default()
         })
         .insert(MouseSelectionRect::new(
-            Vec2::new(100.0, 100.0),
+            Vec2::new(170.0, 350.0),
             Rect::new(0.0, 0.0, 0.0, 0.0),
         ))
         .insert(Name::from("Speed Dial"))
@@ -138,13 +142,13 @@ impl MouseSelectionRect {
 struct SelectionEnabled(bool);
 
 fn cursor_position_system(
-    window_query: Query<&Window, With<PrimaryWindow>>,
+    mut window_query: Query<&mut Window, With<PrimaryWindow>>,
     camera_query: Query<(&Camera, &GlobalTransform), With<OverlayCamera>>,
     selector_query: Query<(&MouseSelectionRect), With<SpeedDial>>,
     mut selection_enabled: ResMut<SelectionEnabled>,
 ) {
     let (camera, camera_transform) = camera_query.single();
-    let window = window_query.single();
+    let mut window = window_query.single_mut();
     let selector_rect = selector_query.single();
 
     if let Some(world_position) = window
@@ -153,7 +157,10 @@ fn cursor_position_system(
         .map(|ray| ray.origin.truncate())
     {
         selection_enabled.0 = selector_rect.world_rect.contains(world_position);
-        println!("Selection enabled: {}", selection_enabled.0);
+        window.cursor.icon = match selection_enabled.0 {
+            true => bevy::window::CursorIcon::Pointer,
+            false => bevy::window::CursorIcon::Default,
+        };
     }
 }
 
@@ -171,13 +178,19 @@ fn position_cursor_selection_rect_system(
 fn handle_selector_input(
     inputs: Query<&ActionState<InputAction>>,
     mut handle_query: Query<(&mut Rotation), With<SpeedHandle>>,
+    mut mouse_held: Local<bool>,
+    selection_enabled: Res<SelectionEnabled>,
 ) {
     let inputs = inputs.single();
-    let mouse = inputs.value(InputAction::MouseMove);
+    let mouse = inputs.value(&InputAction::MouseMove);
 
-    let mouse_button_held = inputs.value(InputAction::MouseLClick) != 0.0;
+    if !*mouse_held && inputs.just_pressed(&InputAction::MouseLClick) && selection_enabled.0 {
+        *mouse_held = true;
+    } else if *mouse_held && inputs.just_released(&InputAction::MouseLClick) {
+        *mouse_held = false;
+    }
 
-    if mouse != 0.0 && mouse_button_held {
+    if mouse != 0.0 && *mouse_held {
         let angle_change = mouse * MOUSE_MOVE_ROTATION_FACTOR;
         for mut rotation in handle_query.iter_mut() {
             let target = rotation.target + angle_change;

@@ -6,8 +6,8 @@ use crate::game::floors::{
 };
 use crate::game::human_store;
 use crate::game::human_store::{FloorDesire, HowMany, Human, HumanStore, PositionIndex};
+use crate::game::lift::LiftHumanStore;
 use crate::game::speed_selector::TargetVelocity;
-use crate::game::ui::HeldHumans;
 use crate::game::world_gen::Floor;
 use crate::history_store::HistoryStore;
 use crate::input_action::InputAction;
@@ -72,6 +72,8 @@ impl Plugin for GamePlugin {
         .register_type::<PositionIndex>()
         .register_type::<Human>()
         .register_type::<FloorDesire>();
+
+        super::lift::add(app);
     }
 }
 
@@ -83,10 +85,10 @@ pub struct AccelerationLog(pub HistoryStore<(f32, f32)>);
 fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>) {
     println!("Setting up game");
     let mut input_map = InputMap::default();
-    input_map.insert(KeyCode::W, InputAction::Up);
-    input_map.insert(KeyCode::S, InputAction::Down);
-    input_map.insert(SingleAxis::mouse_motion_y(), InputAction::MouseMove);
-    input_map.insert(Mouse(MouseButton::Left), InputAction::MouseLClick);
+    input_map.insert(InputAction::Up, KeyCode::KeyW);
+    input_map.insert(InputAction::Down, KeyCode::KeyS);
+    input_map.insert(InputAction::MouseMove, SingleAxis::mouse_motion_y());
+    input_map.insert(InputAction::MouseLClick, Mouse(MouseButton::Left));
     let texture = asset_server.load("textures/lift.png");
     commands
         .spawn(SpriteBundle {
@@ -303,7 +305,7 @@ fn floor_proximity_effect_system(
     human_store_query: Query<(Entity, &FloorNum), With<HumanStore>>,
     human_query: Query<(Entity, &FloorDesire, &PositionIndex, &Parent), (With<Human>)>,
     mut commands: Commands,
-    mut held_humans: ResMut<HeldHumans>,
+    mut held_humans: ResMut<LiftHumanStore>,
 ) {
     for proximity in query.iter() {
         if proximity.time_in_proximity.just_finished() {
@@ -318,11 +320,12 @@ fn floor_proximity_effect_system(
             // there will only ever be one floor proximity at a time, so it's fine.
             for (store_entity, floor_num) in human_store_query.iter() {
                 if floor_num.0 == proximity.floor_num {
+                    let capacity = held_humans.free_capacity();
                     let picked_up_floor_desires = human_store::remove_humans(
                         &human_query,
                         store_entity,
                         &mut commands,
-                        HowMany::All,
+                        HowMany::N(capacity),
                     );
                     println!(
                         "Picked up {} humies ({:?})",

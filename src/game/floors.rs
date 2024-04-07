@@ -206,7 +206,7 @@ pub fn build_floor_map(
                                 ..Default::default()
                             },
                         )
-                        .with_alignment(TextAlignment::Center),
+                        .with_justify(JustifyText::Center),
                         transform: Transform::from_translation(Vec3::new(6.6, 18.1, 0.1)),
                         ..default()
                     })

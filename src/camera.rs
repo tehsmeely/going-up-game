@@ -1,4 +1,3 @@
-use bevy::core_pipeline::clear_color::ClearColorConfig;
 use bevy::prelude::*;
 use bevy::render::view::RenderLayers;
 
@@ -36,9 +35,6 @@ fn setup_cameras(mut commands: Commands) {
         .spawn(Camera2dBundle {
             camera: Camera {
                 order: 1,
-                ..default()
-            },
-            camera_2d: Camera2d {
                 // no "background color", we need to see the main camera's output
                 clear_color: ClearColorConfig::None,
                 ..default()
