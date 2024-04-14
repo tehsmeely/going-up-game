@@ -9,6 +9,7 @@ mod history_store;
 mod input_action;
 mod loading;
 mod menu;
+mod ui_widgets;
 
 use crate::audio::InternalAudioPlugin;
 use crate::loading::LoadingPlugin;

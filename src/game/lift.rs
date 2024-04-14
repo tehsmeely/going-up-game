@@ -1,8 +1,8 @@
 use crate::game::ui;
+use crate::loading::TextureAssets;
 use bevy::app::App;
 use bevy::log::error;
-use bevy::prelude::{Reflect, Res, Resource};
-use bevy::time::{Timer, TimerMode};
+use bevy::prelude::*;
 use bevy::utils::hashbrown::HashMap;
 use bevy_egui::egui::{Align2, Color32, RichText};
 use bevy_egui::{egui, EguiContexts};
@@ -35,6 +35,42 @@ pub struct StoredHuman {
 }
 #[derive(Debug, Reflect, Clone)]
 pub struct StoredHumanSlot(Option<StoredHuman>);
+
+impl StoredHumanSlot {
+    fn ui_component(&self, ui: &mut egui::Ui, texture_ids: &(egui::TextureId, egui::TextureId)) {
+        let text_color = Color32::WHITE;
+        let size = 24.0;
+        match &self.0 {
+            Some(human) => {
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.add(egui::Image::new(egui::load::SizedTexture::new(
+                            texture_ids.0,
+                            [20., 30.],
+                        )));
+                        ui.label(
+                            RichText::new(human.destination_floor.to_string())
+                                .color(text_color)
+                                .size(size),
+                        );
+                    });
+                    crate::ui_widgets::fill_bar(
+                        ui,
+                        Color32::BLACK,
+                        Color32::GREEN,
+                        human.patience_timer.fraction_remaining(),
+                    );
+                });
+            }
+            None => {
+                ui.add(egui::Image::new(egui::load::SizedTexture::new(
+                    texture_ids.1,
+                    [20., 30.],
+                )));
+            }
+        }
+    }
+}
 
 pub fn add(app: &mut App) {
     app.register_type::<LiftHumanStore>()
@@ -100,10 +136,29 @@ impl LiftHumanStore {
     pub fn free_capacity(&self) -> usize {
         self.slots.iter().filter(|slot| slot.0.is_none()).count()
     }
-    pub fn update_system(mut humans: Res<Self>, mut contexts: EguiContexts) {
+
+    pub fn update_system(mut humans: ResMut<Self>, time: Res<Time>) {
+        for slot in humans.slots.iter_mut() {
+            if let Some(human) = &mut slot.0 {
+                human.patience_timer.tick(time.delta());
+            }
+        }
+    }
+    pub fn draw_system(
+        mut humans: Res<Self>,
+        mut contexts: EguiContexts,
+        texture_assets: Res<TextureAssets>,
+        mut texture_ids: Local<(egui::TextureId, egui::TextureId)>,
+        mut is_initialized: Local<bool>,
+    ) {
+        if !*is_initialized {
+            *is_initialized = true;
+            *texture_ids = (
+                contexts.add_image(texture_assets.human_icon_on.clone_weak()),
+                contexts.add_image(texture_assets.human_icon_off.clone_weak()),
+            );
+        }
         let frame = ui::default_frame();
-        let text_color = Color32::WHITE;
-        let size = 24.0;
         let num_columns = 3;
         egui::Window::new("Held Humans")
             .movable(false)
@@ -119,23 +174,9 @@ impl LiftHumanStore {
                             if i % num_columns == 0 {
                                 ui.end_row();
                             }
-                            ui.label(
-                                RichText::new(format!(
-                                    "Slot {}: {}",
-                                    i,
-                                    slot.0
-                                        .as_ref()
-                                        .map(|human| format!(
-                                            "{} to {}",
-                                            human.kind, human.destination_floor
-                                        ))
-                                        .unwrap_or_else(|| "Empty".to_string())
-                                ))
-                                .color(text_color)
-                                .size(size),
-                            );
+                            slot.ui_component(ui, &texture_ids);
                         }
-                    })
+                    });
             });
     }
 }

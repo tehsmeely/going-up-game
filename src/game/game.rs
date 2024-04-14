@@ -1,5 +1,4 @@
 use crate::camera::{CameraTrack, RENDER_LAYER_MAIN};
-use crate::game::floors;
 use crate::game::floors::{
     human_store_spawn_humans_system, FloorLatchYPositions, FloorNum, FloorRegular, FloorShaft,
     FloorVestibule, Floors, LiftLimits, PersonSpawnTimer, ShaftCentreX,
@@ -9,6 +8,7 @@ use crate::game::human_store::{FloorDesire, HowMany, Human, HumanStore, Position
 use crate::game::lift::LiftHumanStore;
 use crate::game::speed_selector::TargetVelocity;
 use crate::game::world_gen::Floor;
+use crate::game::{floors, lift};
 use crate::history_store::HistoryStore;
 use crate::input_action::InputAction;
 use crate::{camera, GameState};
@@ -47,6 +47,7 @@ impl Plugin for GamePlugin {
                 floor_proximity_effect_system.after(floor_proximity_system),
                 human_store_spawn_humans_system,
                 human_store::floor_desire_system,
+                lift::LiftHumanStore::update_system,
             )
                 .run_if(in_state(GameState::Playing)),
         )
@@ -55,6 +56,7 @@ impl Plugin for GamePlugin {
             ((lift_latch_system, move_lift_system).chain(),).run_if(in_state(GameState::Playing)),
         )
         .insert_resource(VelocityLog(HistoryStore::new(512, 1024, 60)))
+        .insert_resource(ObservedVelocityLog(HistoryStore::new(512, 1024, 60)))
         .insert_resource(AccelerationLog(HistoryStore::new(512, 1024, 60)))
         .insert_resource(PersonSpawnTimer(Timer::from_seconds(
             5.0,
@@ -80,6 +82,8 @@ impl Plugin for GamePlugin {
 #[derive(Resource, Debug)]
 pub struct VelocityLog(pub HistoryStore<(f32, f32)>);
 #[derive(Resource, Debug)]
+pub struct ObservedVelocityLog(pub HistoryStore<(f32, f32)>);
+#[derive(Resource, Debug)]
 pub struct AccelerationLog(pub HistoryStore<(f32, f32)>);
 
 fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -100,6 +104,7 @@ fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>) {
         .insert(Lift)
         .insert(LiftMode::Free)
         .insert(LinearVelocity::new((-100.0, 100.0), 100.0))
+        .insert(ObservedVelocity(0.0))
         .insert(CameraTrack { y_threshold: 50.0 })
         .insert(InputManagerBundle::<InputAction> {
             input_map,
@@ -129,23 +134,27 @@ fn lift_latch_system(
 }
 
 fn move_lift_system(
-    mut lift_query: Query<(&mut Transform, &mut LinearVelocity), With<Lift>>,
+    mut lift_query: Query<(&mut Transform, &mut LinearVelocity, &mut ObservedVelocity), With<Lift>>,
     time: Res<Time>,
     shaft_centre_x: Res<ShaftCentreX>,
     lift_limits: Res<LiftLimits>,
     target_velocity: Res<TargetVelocity>,
     mut velocity_log: ResMut<VelocityLog>,
+    mut observed_velocity_log: ResMut<ObservedVelocityLog>,
     mut acceleration_log: ResMut<AccelerationLog>,
 ) {
-    let (mut lift_transform, mut actual_velocity) = lift_query.single_mut();
+    let (mut lift_transform, mut actual_velocity, mut observed_velocity) = lift_query.single_mut();
 
     let accel_this_tick = actual_velocity.update(target_velocity.0, time.delta());
 
-    lift_transform.translation.y = f32::clamp(
+    let new_y = f32::clamp(
         lift_transform.translation.y + (actual_velocity.velocity * time.delta_seconds()),
         lift_limits.min,
         lift_limits.max,
     );
+    let dy = (new_y - lift_transform.translation.y).abs();
+    observed_velocity.0 = dy / time.delta_seconds();
+    lift_transform.translation.y = new_y;
     lift_transform.translation.x = shaft_centre_x.0;
     velocity_log
         .0
@@ -153,6 +162,9 @@ fn move_lift_system(
     acceleration_log
         .0
         .push((time.elapsed_seconds(), accel_this_tick));
+    observed_velocity_log
+        .0
+        .push((time.elapsed_seconds(), observed_velocity.0));
 }
 
 fn lift_gizmo_system(
@@ -223,6 +235,9 @@ pub struct LinearVelocity {
     max_accel: f32,
 }
 
+#[derive(Component, Debug, Default, Reflect)]
+pub struct ObservedVelocity(f32);
+
 impl LinearVelocity {
     fn new(bounds: (f32, f32), max_accel: f32) -> Self {
         Self {
@@ -269,11 +284,14 @@ fn floor_proximity_system(
         &LinearVelocity,
         &FloorProximitySensor,
         Option<&mut FloorProximity>,
+        &mut LiftMode,
     )>,
     floors: Res<Floors>,
     time: Res<Time>,
 ) {
-    for (entity, lift_transform, velocity, sensor, mut proximity) in lift_query.iter_mut() {
+    for (entity, lift_transform, velocity, sensor, mut proximity, mut lift_mode) in
+        lift_query.iter_mut()
+    {
         if let Some((closest_floor, closest_floor_y)) =
             floors.closest_floor(lift_transform.translation.y)
         {
@@ -286,9 +304,15 @@ fn floor_proximity_system(
                 let same_floor = floor_proximity.floor_num == closest_floor;
                 if same_floor && close_enough && slow_enough {
                     floor_proximity.time_in_proximity.tick(time.delta());
+                    *lift_mode = if floor_proximity.time_in_proximity.finished() {
+                        LiftMode::Open
+                    } else {
+                        LiftMode::Opening
+                    };
                 } else {
                     floor_proximity.floor_num = closest_floor;
                     floor_proximity.time_in_proximity.reset();
+                    *lift_mode = LiftMode::Free;
                 }
             } else {
                 commands.entity(entity).insert(FloorProximity::new(
@@ -296,6 +320,8 @@ fn floor_proximity_system(
                     Timer::new(sensor.floor_timer_duration, TimerMode::Once),
                 ));
             }
+        } else {
+            *lift_mode = LiftMode::Free
         }
     }
 }
@@ -308,7 +334,7 @@ fn floor_proximity_effect_system(
     mut held_humans: ResMut<LiftHumanStore>,
 ) {
     for proximity in query.iter() {
-        if proximity.time_in_proximity.just_finished() {
+        if proximity.time_in_proximity.finished() {
             println!(
                 "Collecting from and delivering to Floor {}!!",
                 proximity.floor_num

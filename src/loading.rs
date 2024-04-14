@@ -36,4 +36,8 @@ pub struct TextureAssets {
     pub github: Handle<Image>,
     #[asset(path = "textures/person.png")]
     pub human: Handle<Image>,
+    #[asset(path = "textures/person_icon0.png")]
+    pub human_icon_on: Handle<Image>,
+    #[asset(path = "textures/person_icon1.png")]
+    pub human_icon_off: Handle<Image>,
 }
