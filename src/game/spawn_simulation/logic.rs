@@ -8,7 +8,7 @@ use std::fmt::{Debug, Formatter};
 use std::time::Duration;
 
 /// Represents contiguous time ranges
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TimeRange {
     Morning,
     Midday,
@@ -72,6 +72,47 @@ impl RawFloorConfig {
             strength,
             floor_num,
         }
+    }
+}
+
+pub struct FloorSpawnManager {
+    floor_spawn_rates: FloorSpawnRates,
+    raw_floors: HashMap<FloorNum, RawFloorConfig>,
+}
+
+fn resolve_all(
+    floors: &HashMap<FloorNum, RawFloorConfig>,
+    time_range: TimeRange,
+) -> Vec<ResolvedFloorConfig> {
+    floors
+        .iter()
+        .map(|(floor_num, raw)| raw.resolve(time_range, *floor_num))
+        .collect()
+}
+
+impl FloorSpawnManager {
+    pub fn new(raw_floors: HashMap<FloorNum, RawFloorConfig>) -> Self {
+        let resolved = resolve_all(&raw_floors, TimeRange::Morning);
+        let floor_spawn_rates = FloorSpawnRates::get_rates(resolved, TimeRange::Morning);
+        Self {
+            floor_spawn_rates,
+            raw_floors,
+        }
+    }
+    pub fn tick<R: Rng>(
+        &mut self,
+        game_time: &GameTime,
+        delta: Duration,
+        rng: &mut R,
+    ) -> Vec<(FloorNum, FloorNum)> {
+        let time_range = TimeRange::of_time_ofday(&game_time.to_game_time_of_day());
+        if time_range != self.floor_spawn_rates.resolved_for_time_range {
+            // Re-resolve
+            println!("Re-Resolving, time range changed (to: {:?})", time_range);
+            let resolved: Vec<ResolvedFloorConfig> = resolve_all(&self.raw_floors, time_range);
+            self.floor_spawn_rates = FloorSpawnRates::get_rates(resolved, time_range);
+        }
+        self.floor_spawn_rates.tick(game_time, delta, rng)
     }
 }
 

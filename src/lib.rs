@@ -72,7 +72,9 @@ pub fn run_spawn_example() {
 
 mod spawn_example {
     use crate::game;
-    use crate::game::spawn_simulation::{ResolvedFloorConfig, SinkOrSource, TimeRange};
+    use crate::game::spawn_simulation::{
+        FloorSpawnManager, ResolvedFloorConfig, SinkOrSource, TimeRange,
+    };
     use crate::game::{spawn_simulation, FloorNum};
     use rand::thread_rng;
     use std::fs::File;
@@ -84,42 +86,50 @@ mod spawn_example {
         let floors = vec![
             spawn_simulation::RawFloorConfig::new(
                 Box::new(|time_range| match time_range {
-                    TimeRange::Morning => SinkOrSource::Source,
+                    TimeRange::Morning | TimeRange::Afternoon => SinkOrSource::Source,
                     _ => SinkOrSource::Sink,
                 }),
                 Box::new(|_time_range| 10),
             ),
             spawn_simulation::RawFloorConfig::new(
                 Box::new(|time_range| match time_range {
-                    TimeRange::Morning => SinkOrSource::Sink,
-                    _ => SinkOrSource::Source,
+                    TimeRange::Midday => SinkOrSource::Source,
+                    _ => SinkOrSource::Sink,
                 }),
                 Box::new(|_time_range| 1),
             ),
             spawn_simulation::RawFloorConfig::new(
                 Box::new(|time_range| match time_range {
-                    TimeRange::Morning => SinkOrSource::Sink,
-                    _ => SinkOrSource::Source,
+                    TimeRange::Midday => SinkOrSource::Source,
+                    _ => SinkOrSource::Sink,
                 }),
                 Box::new(|_time_range| 1),
             ),
             spawn_simulation::RawFloorConfig::new(
                 Box::new(|time_range| match time_range {
-                    TimeRange::Morning => SinkOrSource::Sink,
-                    _ => SinkOrSource::Source,
+                    TimeRange::Midday => SinkOrSource::Source,
+                    _ => SinkOrSource::Sink,
                 }),
                 Box::new(|_time_range| 1),
             ),
             spawn_simulation::RawFloorConfig::new(
                 Box::new(|time_range| match time_range {
-                    TimeRange::Morning => SinkOrSource::Sink,
-                    _ => SinkOrSource::Source,
+                    TimeRange::Midday => SinkOrSource::Source,
+                    _ => SinkOrSource::Sink,
                 }),
                 Box::new(|_time_range| 1),
             ),
         ];
 
         let time_range = TimeRange::of_time_ofday(&game_clock.to_game_time_of_day());
+
+        let floors = floors
+            .into_iter()
+            .enumerate()
+            .map(|(i, raw)| (FloorNum(i as i32), raw))
+            .collect();
+        let mut manager = FloorSpawnManager::new(floors);
+        /*
         let resolved: Vec<ResolvedFloorConfig> = floors
             .iter()
             .enumerate()
@@ -128,6 +138,7 @@ mod spawn_example {
 
         let mut floor_spawn_rates =
             spawn_simulation::FloorSpawnRates::get_rates(resolved.clone(), time_range);
+         */
 
         let mut rng = thread_rng();
         let output_file = File::create("spawn_output.csv").unwrap();
@@ -136,7 +147,7 @@ mod spawn_example {
         let mut num_ticks = 0;
         loop {
             num_ticks += 1;
-            let spawns = floor_spawn_rates.tick(&game_clock, tick_size, &mut rng);
+            let spawns = manager.tick(&game_clock, tick_size, &mut rng);
             for (from, to_) in spawns {
                 let line = format!("{},{},{}\n", game_clock.to_string_secs(), from.0, to_.0);
                 output_writer.write_all(line.as_bytes()).unwrap()
