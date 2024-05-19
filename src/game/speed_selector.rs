@@ -30,7 +30,7 @@ struct OverlayGizmos {}
 impl Plugin for SpeedSelectorPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
-            OnEnter(GameState::Playing),
+            OnEnter(GameState::PlayingDay),
             (spawn_selector, OverlayGizmos::setup),
         )
         .add_systems(
@@ -42,7 +42,7 @@ impl Plugin for SpeedSelectorPlugin {
                 mouse_selection_rect_debug_gizmo,
                 position_cursor_selection_rect_system,
             )
-                .run_if(in_state(GameState::Playing)),
+                .run_if(in_state(GameState::PlayingDay)),
         )
         .init_gizmo_group::<OverlayGizmos>()
         .insert_resource(TargetVelocity(0.0))
@@ -71,7 +71,7 @@ fn spawn_selector(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..default()
         })
         .insert(MouseSelectionRect::new(
-            Vec2::new(170.0, 350.0),
+            Vec2::new(190.0, 370.0),
             Rect::new(0.0, 0.0, 0.0, 0.0),
         ))
         .insert(Name::from("Speed Dial"))
@@ -101,7 +101,9 @@ fn update_selector(
     for (mut rotation, mut transform) in query.iter_mut() {
         let diff = rotation.update();
         transform.rotate_around(Vec3::new(23.0, 0.0, 0.0), Quat::from_rotation_z(diff));
-        target_velocity.0 = rotation.actual * TARGET_VELOCITY_FACTOR;
+        target_velocity.0 = (rotation.actual.abs() * rotation.actual.abs())
+            * TARGET_VELOCITY_FACTOR
+            * rotation.actual.signum();
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::core::TransformTween;
+use crate::core::{TransformTween, TweenCompleteEvent};
 use crate::game::floors::{FloorNum, FloorVestibule, Person, PersonSpawnTimer};
 use crate::game::game::MAP_Z;
 use crate::loading::TextureAssets;
@@ -55,6 +55,22 @@ impl PositionIndex {
     }
 }
 
+pub fn human_marker_component_system(
+    mut tween_complete_events: EventReader<TweenCompleteEvent>,
+    mut commands: Commands,
+) {
+    for event in tween_complete_events.read() {
+        match event {
+            TweenCompleteEvent::Finished(entity) => {
+                commands.entity(*entity).remove::<Unavailable>();
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Component, Reflect)]
+pub struct Unavailable;
+
 pub fn add_human_to_store(
     human_query: &Query<(&PositionIndex, &Parent), (With<Human>)>,
     parent_entity: Entity,
@@ -95,6 +111,7 @@ pub fn add_human_to_store(
         .insert(FloorDesire {
             floor_num: desired_floor,
         })
+        .insert(Unavailable)
         .insert(Name::new("Human"))
         .set_parent(parent_entity);
 }
@@ -104,7 +121,10 @@ pub enum HowMany {
     N(usize),
 }
 pub fn remove_humans(
-    human_query: &Query<(Entity, &FloorDesire, &PositionIndex, &Parent), (With<Human>)>,
+    human_query: &Query<
+        (Entity, &FloorDesire, &PositionIndex, &Parent),
+        (With<Human>, Without<Unavailable>),
+    >,
     parent_entity: Entity,
     commands: &mut Commands,
     num_humans: HowMany,

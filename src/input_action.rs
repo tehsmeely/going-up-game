@@ -7,4 +7,6 @@ pub enum InputAction {
     Down,
     MouseMove,
     MouseLClick,
+    ZoomIn,
+    ZoomOut,
 }

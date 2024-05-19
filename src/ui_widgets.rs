@@ -7,7 +7,7 @@ pub fn fill_bar(
     fill_color: egui::Color32,
     fraction: f32,
 ) {
-    let desired_size = ui.spacing().interact_size.y * egui::vec2(0.5, 1.0);
+    let desired_size = ui.spacing().interact_size * egui::vec2(1.0, 0.2);
     let (rect, _) = ui.allocate_exact_size(desired_size, Sense::hover());
     let fill_height = rect.height() * fraction;
     let mut fill_rect = rect.clone();

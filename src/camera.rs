@@ -1,5 +1,7 @@
+use crate::input_action::InputAction;
 use bevy::prelude::*;
 use bevy::render::view::RenderLayers;
+use leafwing_input_manager::action_state::ActionState;
 
 pub const RENDER_LAYER_MAIN: u8 = 0;
 pub const RENDER_LAYER_OVERLAY: u8 = 1;
@@ -9,7 +11,7 @@ pub struct CameraPlugin;
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, (setup_cameras))
-            .add_systems(FixedUpdate, (camera_track_system));
+            .add_systems(FixedUpdate, (camera_track_system, camera_zoom_system));
     }
 }
 fn setup_cameras(mut commands: Commands) {
@@ -57,7 +59,7 @@ pub struct CameraTrack {
     pub y_threshold: f32,
 }
 
-pub fn camera_track_system(
+fn camera_track_system(
     mut camera_query: Query<(&mut Transform), (With<Camera>, With<MainCamera>)>,
     tracked_query: Query<(&Transform, &CameraTrack), Without<Camera>>,
 ) {
@@ -70,6 +72,26 @@ pub fn camera_track_system(
             );
             camera_transform.translation.y = y;
             camera_transform.translation.x = transform.translation.x - 200.0;
+        }
+    }
+}
+
+fn camera_zoom_system(
+    mut camera_query: Query<(&mut OrthographicProjection), (With<Camera>, With<MainCamera>)>,
+    inputs: Query<&ActionState<InputAction>>,
+) {
+    if let Ok(inputs) = inputs.get_single() {
+        let mut scale_diff = 0.0;
+        if inputs.just_pressed(&InputAction::ZoomIn) {
+            println!("Zoom In");
+            scale_diff += 0.1;
+        }
+        if inputs.just_pressed(&InputAction::ZoomOut) {
+            println!("Zoom Out");
+            scale_diff -= 0.1;
+        }
+        for (mut projection) in camera_query.iter_mut() {
+            projection.scale += scale_diff;
         }
     }
 }

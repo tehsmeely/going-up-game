@@ -11,10 +11,10 @@ pub struct OverlayPlugin;
 
 impl Plugin for OverlayPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Playing), (LiftSpeedText::setup))
+        app.add_systems(OnEnter(GameState::PlayingDay), (LiftSpeedText::setup))
             .add_systems(
                 Update,
-                (LiftSpeedText::update_system).run_if(in_state(GameState::Playing)),
+                (LiftSpeedText::update_system).run_if(in_state(GameState::PlayingDay)),
             );
     }
 }

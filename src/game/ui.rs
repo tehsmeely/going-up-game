@@ -1,4 +1,5 @@
 use crate::game::game::{AccelerationLog, ObservedVelocity, ObservedVelocityLog, VelocityLog};
+use crate::game::game_clock::GameTime;
 use crate::game::lift::LiftHumanStore;
 use crate::GameState;
 use bevy::prelude::*;
@@ -21,7 +22,7 @@ impl Plugin for GameUiPlugin {
                 GameCentralInfo::update_system,
                 LiftHumanStore::draw_system,
             )
-                .run_if(in_state(GameState::Playing)),
+                .run_if(in_state(GameState::PlayingDay)),
         )
         .init_resource::<ShowUiState>()
         .insert_resource(GameCentralInfo::new())
@@ -176,7 +177,7 @@ pub fn default_frame() -> Frame {
 pub struct GameCentralInfo {
     money: f32,
     day: usize,
-    time: Stopwatch,
+    time: GameTime,
 }
 
 impl GameCentralInfo {
@@ -184,7 +185,7 @@ impl GameCentralInfo {
         Self {
             money: 0.0,
             day: 1,
-            time: Stopwatch::new(),
+            time: GameTime::new(),
         }
     }
 
@@ -211,7 +212,7 @@ impl GameCentralInfo {
                         .size(size),
                 );
                 ui.label(
-                    RichText::new(format!("Time: {}", info.time.elapsed().as_secs()))
+                    RichText::new(format!("{}", info.time.to_game_time_of_day()))
                         .color(text_color)
                         .size(size),
                 );

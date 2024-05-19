@@ -12,7 +12,7 @@ impl Plugin for LoadingPlugin {
     fn build(&self, app: &mut App) {
         app.add_loading_state(
             LoadingState::new(GameState::Loading)
-                .continue_to_state(GameState::Menu)
+                .continue_to_state(GameState::MainMenu)
                 .load_collection::<AudioAssets>()
                 .load_collection::<TextureAssets>(),
         );
@@ -40,4 +40,10 @@ pub struct TextureAssets {
     pub human_icon_on: Handle<Image>,
     #[asset(path = "textures/person_icon1.png")]
     pub human_icon_off: Handle<Image>,
+    #[asset(path = "textures/city_background1.png")]
+    pub city_background_1: Handle<Image>,
+    #[asset(path = "textures/city_background2.png")]
+    pub city_background_2: Handle<Image>,
+    #[asset(path = "textures/city_background3.png")]
+    pub city_background_3: Handle<Image>,
 }

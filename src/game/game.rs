@@ -4,13 +4,16 @@ use crate::game::floors::{
     FloorVestibule, Floors, LiftLimits, PersonSpawnTimer, ShaftCentreX,
 };
 use crate::game::human_store;
-use crate::game::human_store::{FloorDesire, HowMany, Human, HumanStore, PositionIndex};
+use crate::game::human_store::{
+    FloorDesire, HowMany, Human, HumanStore, PositionIndex, Unavailable,
+};
 use crate::game::lift::LiftHumanStore;
 use crate::game::speed_selector::TargetVelocity;
 use crate::game::world_gen::Floor;
 use crate::game::{floors, lift};
 use crate::history_store::HistoryStore;
 use crate::input_action::InputAction;
+use crate::loading::TextureAssets;
 use crate::{camera, GameState};
 use bevy::ecs::system::EntityCommands;
 use bevy::prelude::*;
@@ -27,19 +30,18 @@ use std::time::Duration;
 
 pub struct GamePlugin;
 
-pub const MAP_Z: f32 = 0.0;
+pub const MAP_Z: f32 = 0.5;
 const LIFT_Z: f32 = 210.0;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
-            OnEnter(GameState::Playing),
-            (floors::build_floor_map, setup_game).chain(),
+            OnEnter(GameState::PlayingDay),
+            (floors::build_floor_map, setup_game, setup_background).chain(),
         )
         .add_systems(
             Update,
             (
-                camera::camera_track_system,
                 lift_gizmo_system,
                 debug_lift_mode_text,
                 floor_proximity_system,
@@ -47,13 +49,15 @@ impl Plugin for GamePlugin {
                 floor_proximity_effect_system.after(floor_proximity_system),
                 human_store_spawn_humans_system,
                 human_store::floor_desire_system,
+                human_store::human_marker_component_system,
                 lift::LiftHumanStore::update_system,
             )
-                .run_if(in_state(GameState::Playing)),
+                .run_if(in_state(GameState::PlayingDay)),
         )
         .add_systems(
             FixedUpdate,
-            ((lift_latch_system, move_lift_system).chain(),).run_if(in_state(GameState::Playing)),
+            ((lift_latch_system, move_lift_system).chain(),)
+                .run_if(in_state(GameState::PlayingDay)),
         )
         .insert_resource(VelocityLog(HistoryStore::new(512, 1024, 60)))
         .insert_resource(ObservedVelocityLog(HistoryStore::new(512, 1024, 60)))
@@ -73,7 +77,10 @@ impl Plugin for GamePlugin {
         .register_type::<HumanStore>()
         .register_type::<PositionIndex>()
         .register_type::<Human>()
-        .register_type::<FloorDesire>();
+        .register_type::<FloorDesire>()
+        .register_type::<LiftLimits>()
+        .register_type::<Floors>()
+        .register_type::<FloorLatchYPositions>();
 
         super::lift::add(app);
     }
@@ -86,6 +93,14 @@ pub struct ObservedVelocityLog(pub HistoryStore<(f32, f32)>);
 #[derive(Resource, Debug)]
 pub struct AccelerationLog(pub HistoryStore<(f32, f32)>);
 
+fn setup_background(mut commands: Commands, assets: Res<TextureAssets>) {
+    commands.spawn(SpriteBundle {
+        texture: assets.city_background_1.clone(),
+        transform: Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
+        ..default()
+    });
+}
+
 fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>) {
     println!("Setting up game");
     let mut input_map = InputMap::default();
@@ -93,6 +108,8 @@ fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>) {
     input_map.insert(InputAction::Down, KeyCode::KeyS);
     input_map.insert(InputAction::MouseMove, SingleAxis::mouse_motion_y());
     input_map.insert(InputAction::MouseLClick, Mouse(MouseButton::Left));
+    input_map.insert(InputAction::ZoomIn, KeyCode::KeyQ);
+    input_map.insert(InputAction::ZoomOut, KeyCode::KeyE);
     let texture = asset_server.load("textures/lift.png");
     commands
         .spawn(SpriteBundle {
@@ -329,7 +346,10 @@ fn floor_proximity_system(
 fn floor_proximity_effect_system(
     query: Query<&FloorProximity>,
     human_store_query: Query<(Entity, &FloorNum), With<HumanStore>>,
-    human_query: Query<(Entity, &FloorDesire, &PositionIndex, &Parent), (With<Human>)>,
+    human_query: Query<
+        (Entity, &FloorDesire, &PositionIndex, &Parent),
+        (With<Human>, Without<Unavailable>),
+    >,
     mut commands: Commands,
     mut held_humans: ResMut<LiftHumanStore>,
 ) {

@@ -15,6 +15,7 @@ impl Plugin for CorePlugin {
                 TransformTween::update_system,
             ),
         )
+        .add_event::<TweenCompleteEvent>()
         .register_type::<InScreenSpaceLocation>()
         .register_type::<TransformTween>()
         .register_type::<With2DScale>();
@@ -95,6 +96,11 @@ impl InScreenSpaceLocation {
     }
 }
 
+#[derive(Clone, Debug, Reflect, Event)]
+pub enum TweenCompleteEvent {
+    Finished(Entity),
+}
+
 #[derive(Clone, Debug, Reflect, Component)]
 pub struct TransformTween {
     pub start: Transform,
@@ -116,6 +122,7 @@ impl TransformTween {
         time: Res<Time>,
         mut query: Query<(Entity, &mut Transform, &mut Self)>,
         mut commands: Commands,
+        mut complete_event_writer: EventWriter<TweenCompleteEvent>,
     ) {
         for (entity, mut transform, mut tween) in query.iter_mut() {
             tween.elapsed += time.delta_seconds();
@@ -125,6 +132,7 @@ impl TransformTween {
             transform.scale = tween.start.scale.lerp(tween.end.scale, t);
             if tween.elapsed >= tween.duration {
                 commands.entity(entity).remove::<Self>();
+                complete_event_writer.send(TweenCompleteEvent::Finished(entity));
             }
         }
     }

@@ -57,12 +57,25 @@ pub struct FloorShaft {
 pub struct FloorRegular {
     floor_num: i32,
 }
+#[derive(Debug, Default, Reflect, Component)]
+pub struct FloorBorder {
+    floor_num: i32,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum FloorKind {
     Vestibule,
     Shaft,
     Regular,
+    LeftWall,
+    RightWall,
+    Bottom,
+    BottomLeftCorner,
+    BottomRightCorner,
+    Roof,
+    TopRightCorner,
+    TopLeftCorner,
+    ShaftRoof,
 }
 
 impl FloorKind {
@@ -71,6 +84,7 @@ impl FloorKind {
             Self::Vestibule => commands.insert(FloorVestibule { floor_num }),
             Self::Shaft => commands.insert(FloorShaft { floor_num }),
             Self::Regular => commands.insert(FloorRegular { floor_num }),
+            _ => commands.insert(FloorBorder { floor_num }),
         };
     }
 
@@ -79,6 +93,15 @@ impl FloorKind {
             Self::Vestibule => 2,
             Self::Shaft => 3,
             Self::Regular => rng.gen_range(0..2),
+            Self::LeftWall => 4,
+            Self::RightWall => 5,
+            Self::Bottom => 6,
+            Self::BottomLeftCorner => 7,
+            Self::BottomRightCorner => 8,
+            Self::Roof => 9,
+            Self::TopRightCorner => 10,
+            Self::TopLeftCorner => 11,
+            Self::ShaftRoof => 12,
         })
     }
 
@@ -87,6 +110,15 @@ impl FloorKind {
             Self::Vestibule => Name::new("Vestibule"),
             Self::Shaft => Name::new("Shaft"),
             Self::Regular => Name::new("Regular"),
+            Self::LeftWall => Name::new("LeftWall"),
+            Self::RightWall => Name::new("RightWall"),
+            Self::Bottom => Name::new("Bottom"),
+            Self::BottomLeftCorner => Name::new("BottomLeftCorner"),
+            Self::BottomRightCorner => Name::new("BottomRightCorner"),
+            Self::Roof => Name::new("Roof"),
+            Self::TopRightCorner => Name::new("TopRightCorner"),
+            Self::TopLeftCorner => Name::new("TopLeftCorner"),
+            Self::ShaftRoof => Name::new("ShaftRoof"),
         }
     }
 }
@@ -99,18 +131,77 @@ pub fn floor_num_pretty_str(floor_num: i32) -> String {
     }
 }
 
+fn make_regular_row(row_size: usize, shaft_x: usize) -> Vec<FloorKind> {
+    let mut row = Vec::new();
+    for i in 0..row_size {
+        let kind = if i == 0 {
+            FloorKind::LeftWall
+        } else if i == row_size - 1 {
+            FloorKind::RightWall
+        } else if i == shaft_x {
+            FloorKind::Shaft
+        } else if i == shaft_x - 1 {
+            FloorKind::Vestibule
+        } else {
+            FloorKind::Regular
+        };
+        row.push(kind);
+    }
+    row
+}
+fn make_top_row(row_size: usize, shaft_x: usize) -> Vec<FloorKind> {
+    let mut row = Vec::new();
+    for i in 0..row_size {
+        if i == 0 {
+            row.push(FloorKind::TopLeftCorner);
+        } else if i == row_size - 1 {
+            row.push(FloorKind::TopRightCorner);
+        } else if i == shaft_x {
+            row.push(FloorKind::ShaftRoof);
+        } else {
+            row.push(FloorKind::Roof);
+        }
+    }
+    row
+}
+
+fn make_bottom_row(row_size: usize) -> Vec<FloorKind> {
+    let mut row = Vec::new();
+    for i in 0..row_size {
+        if i == 0 {
+            row.push(FloorKind::BottomLeftCorner);
+        } else if i == row_size - 1 {
+            row.push(FloorKind::BottomRightCorner);
+        } else {
+            row.push(FloorKind::Bottom);
+        }
+    }
+    row
+}
+
+fn position_of_tilepos(tilepos: &TilePos, tile_size: Vec2, tilemap_transform: &Transform) -> Vec2 {
+    let pos = Vec2::new(tilepos.x as f32, tilepos.y as f32) * tile_size;
+    pos + tilemap_transform.translation.truncate()
+}
+
 pub fn build_floor_map(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     array_texture_loader: Res<ArrayTextureLoader>,
 ) {
     println!("Building floor map");
-    let texture: Handle<Image> = asset_server.load("textures/floor_tile.png");
+    let texture: Handle<Image> = asset_server.load("textures/floor_tile.spritesheet.png");
     let tilemap_entity = commands.spawn_empty().id();
-    let shaft_x = 10;
+    let num_regular_tiles_per_row = 10;
+    // Each row is, left wall, N regular tiles, vestibule, shaft, right wall
+    let row_width = num_regular_tiles_per_row + 4;
+    let shaft_x = num_regular_tiles_per_row + 2;
+    // There is a base floor, and a roof
+    let num_regular_floors = 10;
+    let num_rows = num_regular_floors + 2;
     let map_size = TilemapSize {
-        x: shaft_x + 1,
-        y: 10,
+        x: row_width as u32,
+        y: num_rows as u32,
     };
     let mut tile_storage = TileStorage::empty(map_size);
 
@@ -129,16 +220,17 @@ pub fn build_floor_map(
     let mut vestibule_locations = Vec::new();
 
     let mut child_tiles = Vec::new();
-    for x in 0..map_size.x {
-        for floor_num in 0..map_size.y {
-            let tile_pos = TilePos::new(x, floor_num);
-            let floor_kind = if x == shaft_x {
-                FloorKind::Shaft
-            } else if x == (shaft_x - 1) {
-                FloorKind::Vestibule
-            } else {
-                FloorKind::Regular
-            };
+    for floor_num in 0..num_rows {
+        let row = if floor_num == 0 {
+            make_bottom_row(row_width)
+        } else if floor_num == num_rows - 1 {
+            make_top_row(row_width, shaft_x)
+        } else {
+            make_regular_row(row_width, shaft_x)
+        };
+        floor_latch_y_positions.push(floor_num as f32 * tile_size.y);
+        for (x, floor_kind) in row.iter().enumerate() {
+            let tile_pos = TilePos::new(x as u32, floor_num);
             let texture_index = floor_kind.texture_index(&mut rng);
             let tile_entity = commands
                 .spawn(TileBundle {
@@ -150,8 +242,7 @@ pub fn build_floor_map(
                 .insert(floor_kind.name())
                 .id();
             floor_kind.insert_marker_component(floor_num as i32, &mut commands.entity(tile_entity));
-            floor_latch_y_positions.push(floor_num as f32 * tile_size.y);
-            if floor_kind == FloorKind::Vestibule {
+            if floor_kind == &FloorKind::Vestibule {
                 let pos = tile_size_vec2 * Vec2::new(x as f32, floor_num as f32);
                 vestibule_locations.push((floor_num as i32, pos));
             }
@@ -215,28 +306,49 @@ pub fn build_floor_map(
     }
 
     // Adjust floor latch y positions to be in world space
-    let floor_latch_y_positions: Vec<f32> = floor_latch_y_positions
+    let floor_latch_y_positions_raw: Vec<f32> = floor_latch_y_positions
         .iter()
         .map(|y| y + tilemap_transform.translation.y)
         .collect();
-    commands.insert_resource(FloorLatchYPositions(floor_latch_y_positions.clone()));
+    let floor_latch_y_positions = FloorLatchYPositions(floor_latch_y_positions_raw.clone());
+    println!("Inserting {:?}", floor_latch_y_positions);
+    commands.insert_resource(floor_latch_y_positions);
 
-    let floors: Vec<(i32, f32)> = floor_latch_y_positions
+    let floors: Vec<(i32, f32)> = floor_latch_y_positions_raw
         .into_iter()
         .enumerate()
         .map(|(i, y)| (i as i32, y))
         .collect();
-    commands.insert_resource(Floors {
+    let floors = Floors {
         floor_y_positions: floors,
-    });
+    };
+    println!("Inserting {:?}", floors);
+    commands.insert_resource(floors);
 
     let shaft_centre_x = (shaft_x as f32 * tile_size.x) + tilemap_transform.translation.x;
-    commands.insert_resource(ShaftCentreX(shaft_centre_x));
+    let shaft_centre_x = ShaftCentreX(shaft_centre_x);
+    println!("Inserting {:?}", shaft_centre_x);
+    commands.insert_resource(shaft_centre_x);
 
-    let lift_limits = LiftLimits {
-        min: tilemap_transform.translation.y,
-        max: tilemap_transform.translation.y + ((map_size.y - 1) as f32 * tile_size.y),
+    let lift_limits = {
+        // TODO: This hardcoded "1" and "-2" are fragile and assume a 1 floor padding above and
+        // below
+        let lowest_floor = position_of_tilepos(
+            &TilePos::new(shaft_x as u32, 1),
+            tile_size_vec2,
+            &tilemap_transform,
+        );
+        let top_floor = position_of_tilepos(
+            &TilePos::new(shaft_x as u32, map_size.y - 2),
+            tile_size_vec2,
+            &tilemap_transform,
+        );
+        LiftLimits {
+            min: lowest_floor.y,
+            max: top_floor.y,
+        }
     };
+    println!("Inserting {:?}", lift_limits);
     commands.insert_resource(lift_limits);
 }
 
@@ -339,5 +451,5 @@ pub fn spawn_person_system(
 
  */
 
-#[derive(Clone, Debug, Component, Reflect)]
+#[derive(Clone, Copy, Debug, Component, Reflect, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct FloorNum(pub i32);
