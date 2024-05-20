@@ -81,47 +81,90 @@ mod spawn_example {
     use std::io::{BufWriter, Write};
     use std::time::Duration;
 
+    mod prefabs {
+        use crate::game::spawn_simulation::{SinkOrSource, TimeRange};
+
+        pub fn ground_floor_source(time_range: TimeRange) -> SinkOrSource {
+            match time_range {
+                TimeRange::Morning | TimeRange::LateMorning => SinkOrSource::Source,
+                _ => SinkOrSource::Sink,
+            }
+        }
+
+        pub fn sink_all_day(_time_range: TimeRange) -> SinkOrSource {
+            SinkOrSource::Sink
+        }
+
+        pub fn morning_sink(time_range: TimeRange) -> SinkOrSource {
+            match time_range {
+                TimeRange::Morning | TimeRange::LateMorning | TimeRange::Midday => {
+                    SinkOrSource::Sink
+                }
+                _ => SinkOrSource::Source,
+            }
+        }
+
+        pub fn afternoon_sink(time_range: TimeRange) -> SinkOrSource {
+            match time_range {
+                TimeRange::Morning | TimeRange::LateMorning | TimeRange::Midday => {
+                    SinkOrSource::Source
+                }
+                _ => SinkOrSource::Sink,
+            }
+        }
+
+        pub fn alternating_sink(time_range: TimeRange) -> SinkOrSource {
+            match time_range {
+                TimeRange::Morning | TimeRange::Midday | TimeRange::Afternoon => SinkOrSource::Sink,
+                _ => SinkOrSource::Source,
+            }
+        }
+    }
+
     pub fn run_spawn_example() {
         let mut game_clock = game::game_clock::GameTime::new();
         let floors = vec![
             spawn_simulation::RawFloorConfig::new(
-                Box::new(|time_range| match time_range {
-                    TimeRange::Morning | TimeRange::Afternoon => SinkOrSource::Source,
-                    _ => SinkOrSource::Sink,
-                }),
+                Box::new(prefabs::ground_floor_source),
                 Box::new(|_time_range| 10),
             ),
             spawn_simulation::RawFloorConfig::new(
-                Box::new(|time_range| match time_range {
-                    TimeRange::Midday => SinkOrSource::Source,
-                    _ => SinkOrSource::Sink,
-                }),
+                Box::new(prefabs::afternoon_sink),
                 Box::new(|_time_range| 1),
             ),
             spawn_simulation::RawFloorConfig::new(
-                Box::new(|time_range| match time_range {
-                    TimeRange::Midday => SinkOrSource::Source,
-                    _ => SinkOrSource::Sink,
-                }),
+                Box::new(prefabs::afternoon_sink),
                 Box::new(|_time_range| 1),
             ),
             spawn_simulation::RawFloorConfig::new(
-                Box::new(|time_range| match time_range {
-                    TimeRange::Midday => SinkOrSource::Source,
-                    _ => SinkOrSource::Sink,
-                }),
+                Box::new(prefabs::morning_sink),
                 Box::new(|_time_range| 1),
             ),
             spawn_simulation::RawFloorConfig::new(
-                Box::new(|time_range| match time_range {
-                    TimeRange::Midday => SinkOrSource::Source,
-                    _ => SinkOrSource::Sink,
-                }),
+                Box::new(prefabs::alternating_sink),
+                Box::new(|_time_range| 1),
+            ),
+            spawn_simulation::RawFloorConfig::new(
+                Box::new(prefabs::alternating_sink),
+                Box::new(|_time_range| 1),
+            ),
+            spawn_simulation::RawFloorConfig::new(
+                Box::new(prefabs::morning_sink),
+                Box::new(|_time_range| 1),
+            ),
+            spawn_simulation::RawFloorConfig::new(
+                Box::new(prefabs::morning_sink),
+                Box::new(|_time_range| 1),
+            ),
+            spawn_simulation::RawFloorConfig::new(
+                Box::new(prefabs::sink_all_day),
+                Box::new(|_time_range| 1),
+            ),
+            spawn_simulation::RawFloorConfig::new(
+                Box::new(prefabs::alternating_sink),
                 Box::new(|_time_range| 1),
             ),
         ];
-
-        let time_range = TimeRange::of_time_ofday(&game_clock.to_game_time_of_day());
 
         let floors = floors
             .into_iter()
@@ -143,6 +186,9 @@ mod spawn_example {
         let mut rng = thread_rng();
         let output_file = File::create("spawn_output.csv").unwrap();
         let mut output_writer = BufWriter::new(output_file);
+        output_writer
+            .write_all(game_clock.config().to_csv().as_bytes())
+            .unwrap();
         let tick_size = Duration::from_secs(1);
         let mut num_ticks = 0;
         loop {

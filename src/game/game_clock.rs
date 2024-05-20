@@ -21,6 +21,12 @@ pub struct GameTime {
     config: GameTimeConfig,
 }
 
+impl GameTimeConfig {
+    pub fn to_csv(&self) -> String {
+        format!("{}\n", self.time_per_day.as_secs())
+    }
+}
+
 impl GameTime {
     pub fn new() -> Self {
         let config = GameTimeConfig::default();
@@ -38,6 +44,10 @@ impl GameTime {
 
     pub fn to_string_secs(&self) -> String {
         self.time.elapsed().as_secs().to_string()
+    }
+
+    pub fn config(&self) -> &GameTimeConfig {
+        &self.config
     }
 
     pub fn to_game_time_of_day(&self) -> TimeOfDay {

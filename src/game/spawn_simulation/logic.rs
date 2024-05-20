@@ -11,8 +11,11 @@ use std::time::Duration;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TimeRange {
     Morning,
+    LateMorning,
     Midday,
+    EarlyAfternoon,
     Afternoon,
+    Evening,
 }
 
 #[derive(Clone, Debug)]
@@ -47,9 +50,12 @@ pub struct ResolvedFloorConfig {
 impl TimeRange {
     pub fn of_time_ofday(time_ofday: &TimeOfDay) -> Self {
         match time_ofday.hour {
-            0..=10 => Self::Morning,
-            11..=14 => Self::Midday,
-            15.. => Self::Afternoon,
+            0..=8 => Self::Morning,
+            9..=10 => Self::LateMorning,
+            11..=12 => Self::Midday,
+            13..=15 => Self::EarlyAfternoon,
+            16..=18 => Self::Afternoon,
+            19.. => Self::Evening,
         }
     }
 }
