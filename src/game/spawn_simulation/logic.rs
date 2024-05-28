@@ -1,12 +1,16 @@
 use crate::game::floors::FloorNum;
 use crate::game::game_clock::{GameTime, TimeOfDay};
+use bevy::prelude::Deref;
 use bevy::time::Time;
 use rand::seq::SliceRandom;
 use rand::Rng;
 use std::collections::HashMap;
+use std::error::Error;
 use std::fmt::{Debug, Formatter};
+use std::ops::Range;
 use std::time::Duration;
 
+/* Deprecated in favour of per-hour
 /// Represents contiguous time ranges
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TimeRange {
@@ -17,8 +21,12 @@ pub enum TimeRange {
     Afternoon,
     Evening,
 }
+*/
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deref)]
+pub struct HourOfDay(u8);
+
+#[derive(Clone, Debug, Copy, Eq, PartialEq)]
 pub enum SinkOrSource {
     Sink,
     Source,
@@ -26,18 +34,31 @@ pub enum SinkOrSource {
     //Random,
 }
 
+#[derive(Clone, Debug)]
 pub struct RawFloorConfig {
-    sink_or_source: Box<dyn Fn(TimeRange) -> SinkOrSource>,
-    strength: Box<dyn Fn(TimeRange) -> usize>,
+    sink_or_source: [SinkOrSource; 24],
+    strength: [usize; 24],
 }
 
-impl Debug for RawFloorConfig {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RawFloorConfig")
-            .field("sink_or_source", &"<elided fn>")
-            .field("strength", &"<elided fn>")
-            .finish()
+fn resolve_and_validate_range<T: Copy>(
+    vec: Vec<(Range<u8>, T)>,
+) -> Result<[T; 24], FloorConfigError> {
+    let mut resolved = [None; 24];
+    for (range, value) in vec {
+        for i in range {
+            if resolved[i as usize].is_some() {
+                return Err(FloorConfigError::RangeOverlap(i as u8));
+            }
+
+            resolved[i as usize] = Some(value);
+        }
     }
+    for i in 0..24 {
+        if resolved[i].is_none() {
+            return Err(FloorConfigError::RangeGap(i as u8));
+        }
+    }
+    Ok(resolved.map(|opt| opt.unwrap()))
 }
 
 #[derive(Clone, Debug)]
@@ -47,32 +68,43 @@ pub struct ResolvedFloorConfig {
     floor_num: FloorNum,
 }
 
-impl TimeRange {
+impl HourOfDay {
     pub fn of_time_ofday(time_ofday: &TimeOfDay) -> Self {
-        match time_ofday.hour {
-            0..=8 => Self::Morning,
-            9..=10 => Self::LateMorning,
-            11..=12 => Self::Midday,
-            13..=15 => Self::EarlyAfternoon,
-            16..=18 => Self::Afternoon,
-            19.. => Self::Evening,
-        }
+        Self(time_ofday.hour)
     }
 }
 
+#[derive(Debug)]
+pub enum FloorConfigError {
+    RangeOverlap(u8),
+    RangeGap(u8),
+}
+impl std::fmt::Display for FloorConfigError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            Self::RangeOverlap(i) => format!("Range overlap at {}", i),
+            Self::RangeGap(i) => format!("Range gap at {}", i),
+        };
+        write!(f, "FloorConfigError({})", name)
+    }
+}
+impl Error for FloorConfigError {}
+
 impl RawFloorConfig {
     pub fn new(
-        sink_or_source: Box<dyn Fn(TimeRange) -> SinkOrSource>,
-        strength: Box<dyn Fn(TimeRange) -> usize>,
-    ) -> Self {
-        Self {
+        sink_or_source: Vec<(Range<u8>, SinkOrSource)>,
+        strength: Vec<(Range<u8>, usize)>,
+    ) -> Result<Self, FloorConfigError> {
+        let sink_or_source = resolve_and_validate_range(sink_or_source)?;
+        let strength = resolve_and_validate_range(strength)?;
+        Ok(Self {
             sink_or_source,
             strength,
-        }
+        })
     }
-    pub fn resolve(&self, time_range: TimeRange, floor_num: FloorNum) -> ResolvedFloorConfig {
-        let sink_or_source = (self.sink_or_source)(time_range);
-        let strength = (self.strength)(time_range);
+    pub fn resolve(&self, hour_of_day: HourOfDay, floor_num: FloorNum) -> ResolvedFloorConfig {
+        let sink_or_source = self.sink_or_source[hour_of_day.0 as usize];
+        let strength = self.strength[hour_of_day.0 as usize];
         ResolvedFloorConfig {
             sink_or_source,
             strength,
@@ -88,7 +120,7 @@ pub struct FloorSpawnManager {
 
 fn resolve_all(
     floors: &HashMap<FloorNum, RawFloorConfig>,
-    time_range: TimeRange,
+    time_range: HourOfDay,
 ) -> Vec<ResolvedFloorConfig> {
     floors
         .iter()
@@ -98,8 +130,8 @@ fn resolve_all(
 
 impl FloorSpawnManager {
     pub fn new(raw_floors: HashMap<FloorNum, RawFloorConfig>) -> Self {
-        let resolved = resolve_all(&raw_floors, TimeRange::Morning);
-        let floor_spawn_rates = FloorSpawnRates::get_rates(resolved, TimeRange::Morning);
+        let resolved = resolve_all(&raw_floors, HourOfDay(0));
+        let floor_spawn_rates = FloorSpawnRates::get_rates(resolved, HourOfDay(0));
         Self {
             floor_spawn_rates,
             raw_floors,
@@ -111,12 +143,12 @@ impl FloorSpawnManager {
         delta: Duration,
         rng: &mut R,
     ) -> Vec<(FloorNum, FloorNum)> {
-        let time_range = TimeRange::of_time_ofday(&game_time.to_game_time_of_day());
-        if time_range != self.floor_spawn_rates.resolved_for_time_range {
+        let hour = HourOfDay::of_time_ofday(&game_time.to_game_time_of_day());
+        if hour != self.floor_spawn_rates.resolved_for_hour {
             // Re-resolve
-            println!("Re-Resolving, time range changed (to: {:?})", time_range);
-            let resolved: Vec<ResolvedFloorConfig> = resolve_all(&self.raw_floors, time_range);
-            self.floor_spawn_rates = FloorSpawnRates::get_rates(resolved, time_range);
+            println!("Re-Resolving, time range changed (to: {:?})", hour);
+            let resolved: Vec<ResolvedFloorConfig> = resolve_all(&self.raw_floors, hour);
+            self.floor_spawn_rates = FloorSpawnRates::get_rates(resolved, hour);
         }
         self.floor_spawn_rates.tick(game_time, delta, rng)
     }
@@ -125,14 +157,14 @@ impl FloorSpawnManager {
 pub struct FloorSpawnRates {
     floors_with_rates: HashMap<FloorNum, SpawnRate>,
     sinks: Sinks,
-    resolved_for_time_range: TimeRange,
+    resolved_for_hour: HourOfDay,
 }
 // The rough concept is: Using configs, they generate a *spawn rate*
 // That spawn rate is resolved back to the chance to spawn, for a given time span
 // Then a die is rolled on that chance, with a spawn happening if so.
 // The target is then resolved from sink floors
 impl FloorSpawnRates {
-    pub fn get_rates(floors: Vec<ResolvedFloorConfig>, time_range: TimeRange) -> Self {
+    pub fn get_rates(floors: Vec<ResolvedFloorConfig>, time_range: HourOfDay) -> Self {
         let (mut sinks, mut sources): (Vec<_>, Vec<_>) =
             floors
                 .into_iter()
@@ -157,7 +189,7 @@ impl FloorSpawnRates {
         Self {
             floors_with_rates,
             sinks,
-            resolved_for_time_range: time_range,
+            resolved_for_hour: time_range,
         }
     }
 

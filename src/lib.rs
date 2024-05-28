@@ -73,7 +73,7 @@ pub fn run_spawn_example() {
 mod spawn_example {
     use crate::game;
     use crate::game::spawn_simulation::{
-        FloorSpawnManager, ResolvedFloorConfig, SinkOrSource, TimeRange,
+        FloorSpawnManager, HourOfDay, ResolvedFloorConfig, SinkOrSource,
     };
     use crate::game::{spawn_simulation, FloorNum};
     use rand::thread_rng;
@@ -82,42 +82,52 @@ mod spawn_example {
     use std::time::Duration;
 
     mod prefabs {
-        use crate::game::spawn_simulation::{SinkOrSource, TimeRange};
+        use crate::game::spawn_simulation::{HourOfDay, SinkOrSource};
+        use bevy::utils::tracing::span_enabled;
+        use std::ops::Range;
 
-        pub fn ground_floor_source(time_range: TimeRange) -> SinkOrSource {
-            match time_range {
-                TimeRange::Morning | TimeRange::LateMorning => SinkOrSource::Source,
-                _ => SinkOrSource::Sink,
-            }
+        type Sr = Vec<(Range<u8>, SinkOrSource)>;
+
+        pub fn ground_floor_source() -> Sr {
+            vec![
+                (0..10, SinkOrSource::Source),
+                (10..16, SinkOrSource::Sink),
+                (16..17, SinkOrSource::Source),
+                (17..24, SinkOrSource::Sink),
+            ]
         }
 
-        pub fn sink_all_day(_time_range: TimeRange) -> SinkOrSource {
-            SinkOrSource::Sink
+        pub fn always<T: Copy>(val: T) -> Vec<(Range<u8>, T)> {
+            vec![(0..24, val)]
         }
 
-        pub fn morning_sink(time_range: TimeRange) -> SinkOrSource {
-            match time_range {
-                TimeRange::Morning | TimeRange::LateMorning | TimeRange::Midday => {
-                    SinkOrSource::Sink
-                }
-                _ => SinkOrSource::Source,
-            }
+        pub fn morning_sink() -> Sr {
+            vec![(0..12, SinkOrSource::Sink), (12..24, SinkOrSource::Source)]
         }
 
-        pub fn afternoon_sink(time_range: TimeRange) -> SinkOrSource {
-            match time_range {
-                TimeRange::Morning | TimeRange::LateMorning | TimeRange::Midday => {
-                    SinkOrSource::Source
-                }
-                _ => SinkOrSource::Sink,
-            }
+        pub fn afternoon_sink() -> Sr {
+            vec![(0..12, SinkOrSource::Source), (12..24, SinkOrSource::Sink)]
         }
 
-        pub fn alternating_sink(time_range: TimeRange) -> SinkOrSource {
-            match time_range {
-                TimeRange::Morning | TimeRange::Midday | TimeRange::Afternoon => SinkOrSource::Sink,
-                _ => SinkOrSource::Source,
-            }
+        pub fn alternating_sink(mode: bool) -> Sr {
+            let (a, b) = match mode {
+                true => (SinkOrSource::Sink, SinkOrSource::Source),
+                false => (SinkOrSource::Source, SinkOrSource::Sink),
+            };
+            vec![
+                (0..2, a),
+                (2..4, b),
+                (4..6, a),
+                (6..8, b),
+                (8..10, a),
+                (10..12, b),
+                (12..14, a),
+                (14..16, b),
+                (16..18, a),
+                (18..20, b),
+                (20..22, a),
+                (22..24, b),
+            ]
         }
     }
 
@@ -125,51 +135,36 @@ mod spawn_example {
         let mut game_clock = game::game_clock::GameTime::new();
         let floors = vec![
             spawn_simulation::RawFloorConfig::new(
-                Box::new(prefabs::ground_floor_source),
-                Box::new(|_time_range| 10),
+                prefabs::ground_floor_source(),
+                prefabs::always(10),
+            ),
+            spawn_simulation::RawFloorConfig::new(prefabs::afternoon_sink(), prefabs::always(1)),
+            spawn_simulation::RawFloorConfig::new(prefabs::afternoon_sink(), prefabs::always(1)),
+            spawn_simulation::RawFloorConfig::new(prefabs::morning_sink(), prefabs::always(1)),
+            spawn_simulation::RawFloorConfig::new(
+                prefabs::alternating_sink(true),
+                prefabs::always(1),
             ),
             spawn_simulation::RawFloorConfig::new(
-                Box::new(prefabs::afternoon_sink),
-                Box::new(|_time_range| 1),
+                prefabs::alternating_sink(true),
+                prefabs::always(1),
+            ),
+            spawn_simulation::RawFloorConfig::new(prefabs::morning_sink(), prefabs::always(1)),
+            spawn_simulation::RawFloorConfig::new(prefabs::morning_sink(), prefabs::always(1)),
+            spawn_simulation::RawFloorConfig::new(
+                prefabs::always(SinkOrSource::Sink),
+                prefabs::always(1),
             ),
             spawn_simulation::RawFloorConfig::new(
-                Box::new(prefabs::afternoon_sink),
-                Box::new(|_time_range| 1),
-            ),
-            spawn_simulation::RawFloorConfig::new(
-                Box::new(prefabs::morning_sink),
-                Box::new(|_time_range| 1),
-            ),
-            spawn_simulation::RawFloorConfig::new(
-                Box::new(prefabs::alternating_sink),
-                Box::new(|_time_range| 1),
-            ),
-            spawn_simulation::RawFloorConfig::new(
-                Box::new(prefabs::alternating_sink),
-                Box::new(|_time_range| 1),
-            ),
-            spawn_simulation::RawFloorConfig::new(
-                Box::new(prefabs::morning_sink),
-                Box::new(|_time_range| 1),
-            ),
-            spawn_simulation::RawFloorConfig::new(
-                Box::new(prefabs::morning_sink),
-                Box::new(|_time_range| 1),
-            ),
-            spawn_simulation::RawFloorConfig::new(
-                Box::new(prefabs::sink_all_day),
-                Box::new(|_time_range| 1),
-            ),
-            spawn_simulation::RawFloorConfig::new(
-                Box::new(prefabs::alternating_sink),
-                Box::new(|_time_range| 1),
+                prefabs::alternating_sink(false),
+                prefabs::always(1),
             ),
         ];
 
         let floors = floors
             .into_iter()
             .enumerate()
-            .map(|(i, raw)| (FloorNum(i as i32), raw))
+            .map(|(i, raw)| (FloorNum(i as i32), raw.unwrap()))
             .collect();
         let mut manager = FloorSpawnManager::new(floors);
         /*
