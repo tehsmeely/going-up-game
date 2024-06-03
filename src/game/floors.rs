@@ -1,6 +1,9 @@
 use crate::game::game::MAP_Z;
+use crate::game::game_clock::GameTime;
 use crate::game::human_store;
 use crate::game::human_store::{Human, HumanStore, HumanStoreBundle, PositionIndex};
+use crate::game::spawn_simulation::{prefabs, FloorSpawnManager, RawFloorConfig};
+use crate::game::ui::GameCentralInfo;
 use crate::loading::TextureAssets;
 use bevy::ecs::system::EntityCommands;
 use bevy::hierarchy::BuildChildren;
@@ -14,9 +17,12 @@ use bevy_ecs_tilemap::prelude::{
     TileTextureIndex, TilemapArrayTexture,
 };
 use bevy_ecs_tilemap::TilemapBundle;
+use rand::rngs::ThreadRng;
 use rand::seq::SliceRandom;
 use rand::{thread_rng, Rng};
 use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::fmt::Formatter;
 
 #[derive(Resource, Debug, Default, Reflect)]
 pub struct FloorLatchYPositions(pub Vec<f32>);
@@ -220,6 +226,7 @@ pub fn build_floor_map(
     let mut vestibule_locations = Vec::new();
 
     let mut child_tiles = Vec::new();
+    let mut floor_configs = HashMap::new();
     for floor_num in 0..num_rows {
         let row = if floor_num == 0 {
             make_bottom_row(row_width)
@@ -249,6 +256,9 @@ pub fn build_floor_map(
             tile_storage.set(&tile_pos, tile_entity);
             child_tiles.push(tile_entity);
         }
+        // TODO: Think about how to pick the config here
+        let floor_config = prefabs::generate_config_of_floor_num(floor_num as i32);
+        floor_configs.insert(FloorNum(floor_num as i32), floor_config);
     }
     commands.entity(tilemap_entity).push_children(&child_tiles);
 
@@ -279,10 +289,7 @@ pub fn build_floor_map(
         let pos = vestibule_pos + tilemap_transform.translation.truncate();
         commands
             .spawn(HumanStoreBundle::new(
-                HumanStore {
-                    max_humans: 2,
-                    spawn_timer: Timer::from_seconds(1.0, TimerMode::Repeating),
-                },
+                HumanStore { max_humans: 3 },
                 floor_num,
                 pos.extend(MAP_Z + 1.0),
             ))
@@ -350,6 +357,10 @@ pub fn build_floor_map(
     };
     println!("Inserting {:?}", lift_limits);
     commands.insert_resource(lift_limits);
+
+    let floor_spawn_manager = FloorSpawnManager::new(floor_configs);
+    println!("Inserting Floor Spawn Manager: {:?}", floor_spawn_manager);
+    commands.insert_resource(floor_spawn_manager);
 }
 
 #[derive(Resource, Debug, Default, Reflect)]
@@ -377,79 +388,65 @@ fn spawn_person(commands: &mut Commands, asset_server: &Res<AssetServer>, transl
         .insert(RenderLayers::layer(crate::camera::RENDER_LAYER_MAIN));
 }
 
-pub fn human_store_spawn_humans_system(
-    mut query: Query<(Entity, &mut HumanStore, Option<&Children>)>,
-    human_query: Query<(&PositionIndex, &Parent), With<Human>>,
+#[derive(Clone, Debug, Event)]
+pub struct SpawnHumansEvent {
+    spawn_at_floor: FloorNum,
+    destination_floor: FloorNum,
+}
+
+pub fn floor_spawn_process_system(
+    mut floor_spawn_manager: ResMut<FloorSpawnManager>,
+    mut spawn_humans_event_writer: EventWriter<SpawnHumansEvent>,
     time: Res<Time>,
-    texture_assets: Res<TextureAssets>,
-    mut commands: Commands,
+    game_central_info: Res<GameCentralInfo>,
 ) {
-    for (entity, mut human_store, children) in query.iter_mut() {
-        human_store.spawn_timer.tick(time.delta());
-        let num_children = children.map_or(0, |c| c.len());
-        if human_store.spawn_timer.just_finished() && num_children < human_store.max_humans {
-            let desired_floor = {
-                // TODO: Definitely needs enrichment, will be influenced by things like which floor
-                // we're spawning on, time of day, human kind, etc
-                let mut rng = thread_rng();
-                rng.gen_range(0..10)
-            };
-            human_store::add_human_to_store(
-                &human_query,
-                entity,
-                &texture_assets,
-                desired_floor,
-                &mut commands,
-            );
-        }
+    let mut rand = thread_rng();
+    // TODO: Handle rng properly
+    let spawns = floor_spawn_manager.tick(&game_central_info.time, time.delta(), &mut rand);
+    for (spawn_at_floor, destination_floor) in spawns {
+        let event = SpawnHumansEvent {
+            spawn_at_floor,
+            destination_floor,
+        };
+        println!("Sending: {:?}", event);
+        spawn_humans_event_writer.send(event);
     }
 }
 
-// TODO: This system needs to generally be a bit more complicated. Floor spawns will be different
-// per floor but also need to be centrally orchestrated. We also will want to spawn multiple, different
-// people and display them accordingly
-// See design doc for more details
-/*
-pub fn spawn_person_system(
-    query: Query<(&FloorVestibule, &TilePos, Option<&Person>)>,
-    tilemap_query: Query<(&TilemapGridSize, &TilemapType, &Transform)>,
-    asset_server: Res<AssetServer>,
-    mut person_spawn_timer: ResMut<PersonSpawnTimer>,
-    time: Res<Time>,
+pub fn human_store_spawn_humans_system(
+    mut spawn_humans_event_reader: EventReader<SpawnHumansEvent>,
+    mut query: Query<(Entity, &mut HumanStore, &FloorNum, Option<&Children>)>,
+    human_query: Query<(&PositionIndex, &Parent), With<Human>>,
+    texture_assets: Res<TextureAssets>,
     mut commands: Commands,
 ) {
-    person_spawn_timer.tick(time.delta());
-    if person_spawn_timer.just_finished() {
-        println!("Attempting to spawn person");
-        let possible_spawn_floors: Vec<i32> = query
-            .iter()
-            .filter_map(
-                |(floor_vestibule, _tile_pos, maybe_person)| match maybe_person.is_some() {
-                    true => None,
-                    false => Some(floor_vestibule.floor_num),
-                },
-            )
-            .collect();
-        let mut rng = thread_rng();
-        if let Some(spawn_floor) = (&possible_spawn_floors).choose(&mut rng) {
-            println!("Spawning person on floor {}", spawn_floor);
-            for (floor_vestibule, tile_pos, _) in query.iter() {
-                if floor_vestibule.floor_num == *spawn_floor {
-                    let (tilemap_grid_size, tilemap_map_size, tilemap_transform) =
-                        tilemap_query.single();
-                    let position = tile_pos
-                        .center_in_world(tilemap_grid_size, tilemap_map_size)
-                        .extend(MAP_Z + 1.0)
-                        + tilemap_transform.translation;
-                    println!("Actually spawning person at position : {:?}", position);
-                    spawn_person(&mut commands, &asset_server, position);
+    for SpawnHumansEvent {
+        spawn_at_floor,
+        destination_floor,
+    } in spawn_humans_event_reader.read()
+    {
+        for (entity, mut human_store, floor_num, children) in query.iter_mut() {
+            if floor_num == spawn_at_floor {
+                let has_capacity = children.map_or(0, |c| c.len()) < human_store.max_humans;
+                if has_capacity {
+                    human_store::add_human_to_store(
+                        &human_query,
+                        entity,
+                        &texture_assets,
+                        *destination_floor,
+                        &mut commands,
+                    );
                 }
             }
         }
     }
 }
 
- */
-
 #[derive(Clone, Copy, Debug, Component, Reflect, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct FloorNum(pub i32);
+
+impl std::fmt::Display for FloorNum {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "FloorNum({})", self.0)
+    }
+}

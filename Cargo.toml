@@ -6,6 +6,10 @@ authors = ["Jimty Honger"]
 edition = "2021"
 exclude = ["dist", "build", "assets", "credits"]
 
+[[bin]]
+name = "lift_simulation"
+path = "src/bin/spawn_simulation_runner.rs"
+
 
 [profile.dev.package."*"]
 opt-level = 3

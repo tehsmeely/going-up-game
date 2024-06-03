@@ -177,7 +177,7 @@ pub fn default_frame() -> Frame {
 pub struct GameCentralInfo {
     money: f32,
     day: usize,
-    time: GameTime,
+    pub time: GameTime,
 }
 
 impl GameCentralInfo {

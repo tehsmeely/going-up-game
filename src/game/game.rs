@@ -1,7 +1,8 @@
 use crate::camera::{CameraTrack, RENDER_LAYER_MAIN};
 use crate::game::floors::{
-    human_store_spawn_humans_system, FloorLatchYPositions, FloorNum, FloorRegular, FloorShaft,
-    FloorVestibule, Floors, LiftLimits, PersonSpawnTimer, ShaftCentreX,
+    floor_spawn_process_system, human_store_spawn_humans_system, FloorLatchYPositions, FloorNum,
+    FloorRegular, FloorShaft, FloorVestibule, Floors, LiftLimits, PersonSpawnTimer, ShaftCentreX,
+    SpawnHumansEvent,
 };
 use crate::game::human_store;
 use crate::game::human_store::{
@@ -47,6 +48,7 @@ impl Plugin for GamePlugin {
                 floor_proximity_system,
                 proximity_timer_display_system,
                 floor_proximity_effect_system.after(floor_proximity_system),
+                floor_spawn_process_system,
                 human_store_spawn_humans_system,
                 human_store::floor_desire_system,
                 human_store::human_marker_component_system,
@@ -66,6 +68,7 @@ impl Plugin for GamePlugin {
             5.0,
             TimerMode::Repeating,
         )))
+        .add_event::<SpawnHumansEvent>()
         .register_type::<LiftMode>()
         .register_type::<LinearVelocity>()
         .register_type::<FloorProximity>()

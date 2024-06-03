@@ -7,48 +7,33 @@ use bevy::window::PrimaryWindow;
 use bevy::winit::WinitWindows;
 use bevy::DefaultPlugins;
 use bevy_egui::EguiPlugin;
-use going_up::run_spawn_example;
 use going_up::GamePlugin;
 use std::io::Cursor;
 use winit::window::Icon;
 
-enum ExampleMode {
-    Spawning,
-}
-enum RunMode {
-    Regular,
-    Example(ExampleMode),
-}
-
 fn main() {
-    let run_mode = RunMode::Example(ExampleMode::Spawning);
-    match run_mode {
-        RunMode::Regular => {
-            App::new()
-                .insert_resource(Msaa::Off)
-                .insert_resource(AssetMetaCheck::Never)
-                .insert_resource(ClearColor(Color::rgb(0.4, 0.4, 0.4)))
-                .add_plugins(
-                    DefaultPlugins
-                        .set(WindowPlugin {
-                            primary_window: Some(Window {
-                                title: "Going Up".to_string(),
-                                // Bind to canvas included in `index.html`
-                                canvas: Some("#bevy".to_owned()),
-                                // Tells wasm not to override default event handling, like F5 and Ctrl+R
-                                prevent_default_event_handling: false,
-                                ..default()
-                            }),
-                            ..default()
-                        })
-                        .set(ImagePlugin::default_nearest()),
-                )
-                .add_plugins(GamePlugin)
-                .add_systems(Startup, set_window_icon)
-                .run();
-        }
-        RunMode::Example(ExampleMode::Spawning) => run_spawn_example(),
-    }
+    App::new()
+        .insert_resource(Msaa::Off)
+        .insert_resource(AssetMetaCheck::Never)
+        .insert_resource(ClearColor(Color::rgb(0.4, 0.4, 0.4)))
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "Going Up".to_string(),
+                        // Bind to canvas included in `index.html`
+                        canvas: Some("#bevy".to_owned()),
+                        // Tells wasm not to override default event handling, like F5 and Ctrl+R
+                        prevent_default_event_handling: false,
+                        ..default()
+                    }),
+                    ..default()
+                })
+                .set(ImagePlugin::default_nearest()),
+        )
+        .add_plugins(GamePlugin)
+        .add_systems(Startup, set_window_icon)
+        .run();
 }
 
 // Sets the icon on windows and X11

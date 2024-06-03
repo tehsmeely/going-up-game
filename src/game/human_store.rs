@@ -7,9 +7,7 @@ use std::time::Duration;
 
 #[derive(Clone, Debug, Component, Reflect)]
 pub struct HumanStore {
-    pub spawn_timer: Timer,
     pub max_humans: usize,
-    // TODO: Other config options here like: Human kind spawn chance, etc
 }
 
 #[derive(Debug, Bundle)]
@@ -36,7 +34,7 @@ pub struct Human;
 
 #[derive(Clone, Debug, Component, Reflect)]
 pub struct FloorDesire {
-    pub floor_num: i32,
+    pub floor_num: FloorNum,
 }
 
 #[derive(Clone, Debug, Component, Reflect)]
@@ -75,7 +73,7 @@ pub fn add_human_to_store(
     human_query: &Query<(&PositionIndex, &Parent), (With<Human>)>,
     parent_entity: Entity,
     texture_assets: &Res<TextureAssets>,
-    desired_floor: i32,
+    desired_floor: FloorNum,
     commands: &mut Commands,
 ) {
     println!("Adding human to store");
@@ -128,7 +126,7 @@ pub fn remove_humans(
     parent_entity: Entity,
     commands: &mut Commands,
     num_humans: HowMany,
-) -> Vec<i32> {
+) -> Vec<FloorNum> {
     let mut indices: Vec<usize> = human_query
         .iter()
         .map(|(_, _, position_index, _)| position_index.0)

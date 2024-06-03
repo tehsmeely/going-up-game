@@ -1,4 +1,4 @@
-use crate::game::ui;
+use crate::game::{ui, FloorNum};
 use crate::loading::TextureAssets;
 use bevy::app::App;
 use bevy::log::error;
@@ -138,10 +138,10 @@ impl LiftHumanStore {
     }
     /// The length of floors vec must be less than or equal to the number of free slots, this is
     /// checked but not enforced, surplus humans will simply cease to exist - sorry.
-    pub fn add(&mut self, floors: Vec<i32>) {
+    pub fn add(&mut self, floors: Vec<FloorNum>) {
         for floor in floors.iter() {
             // TODO: get a real duration
-            let result = self.add_single_(*floor, Duration::from_secs(10), false);
+            let result = self.add_single_(floor.0, Duration::from_secs(10), false);
             if !result {
                 error!(
                     "Failed to add all humans to lift store, expected there to always be enough space"

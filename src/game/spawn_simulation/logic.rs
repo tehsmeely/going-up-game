@@ -1,6 +1,6 @@
 use crate::game::floors::FloorNum;
 use crate::game::game_clock::{GameTime, TimeOfDay};
-use bevy::prelude::Deref;
+use bevy::prelude::{Component, Deref, Resource};
 use bevy::time::Time;
 use rand::seq::SliceRandom;
 use rand::Rng;
@@ -34,7 +34,7 @@ pub enum SinkOrSource {
     //Random,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Component)]
 pub struct RawFloorConfig {
     sink_or_source: [SinkOrSource; 24],
     strength: [usize; 24],
@@ -113,6 +113,7 @@ impl RawFloorConfig {
     }
 }
 
+#[derive(Debug, Resource)]
 pub struct FloorSpawnManager {
     floor_spawn_rates: FloorSpawnRates,
     raw_floors: HashMap<FloorNum, RawFloorConfig>,
@@ -154,6 +155,7 @@ impl FloorSpawnManager {
     }
 }
 
+#[derive(Debug)]
 pub struct FloorSpawnRates {
     floors_with_rates: HashMap<FloorNum, SpawnRate>,
     sinks: Sinks,
@@ -178,11 +180,21 @@ impl FloorSpawnRates {
         let mut floors_with_rates = HashMap::new();
         // Add as sinks with zero rates
         for sink in sinks.iter() {
-            floors_with_rates.insert(sink.floor_num, SpawnRate(0.0));
+            floors_with_rates.insert(
+                sink.floor_num,
+                SpawnRate {
+                    people_per_game_hour: 0.0,
+                },
+            );
         }
         for source in sources {
             let rate = source.strength as f32 / sinks.len() as f32;
-            floors_with_rates.insert(source.floor_num, SpawnRate(rate));
+            floors_with_rates.insert(
+                source.floor_num,
+                SpawnRate {
+                    people_per_game_hour: rate,
+                },
+            );
         }
         let sinks = Sinks(sinks);
 
@@ -203,7 +215,7 @@ impl FloorSpawnRates {
         // chance a person spawns in this span, is humans/hour * factor_of_hours
         let delta_hrs = game_time.to_hrs_f32(&delta);
         for (floor, rate) in self.floors_with_rates.iter() {
-            let chance = rate.0 * delta_hrs;
+            let chance = rate.people_per_game_hour * delta_hrs;
             let roll: f32 = rng.gen();
             if roll < chance {
                 spawn_floors.push(*floor);
@@ -232,7 +244,11 @@ impl FloorSpawnRates {
 }
 
 // The unit is "people per hour"
-pub struct SpawnRate(pub f32);
+#[derive(Debug, Clone)]
+pub struct SpawnRate {
+    pub people_per_game_hour: f32,
+}
 
 // A vec of sink floors, sorted by strength order
+#[derive(Debug, Clone)]
 pub struct Sinks(pub Vec<ResolvedFloorConfig>);
